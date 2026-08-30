@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  camera-nvr:
+    build: .
+    container_name: camera_nvr
+    restart: unless-stopped # Automatically runs on Pi startup and restarts if it crashes
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent storage on Pi disk
+      - ./recordings:/app/recordings
+      - ./snapshots:/app/snapshots
+      - ./high_qual.txt:/app/high_qual.txt
+    environment:
+      - TZ=Asia/Bangkok
+    network_mode: "host" # High network performance on Raspberry Pi

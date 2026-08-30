@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0d14">
+  <title>Raspberry Pi NVR & Camera Stream</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-primary: #0a0d14;
+      --bg-secondary: #111726;
+      --bg-card: #172033;
+      --bg-card-hover: #1f2b45;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: #3b82f6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-blue-hover: #2563eb;
+      --accent-emerald: #10b981;
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 74px; /* Space for mobile bottom bar */
+    }
+
+    @media (min-width: 768px) {
+      body {
+        padding-bottom: 0;
+      }
+    }
+
+    /* Header */
+    header {
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #ef4444, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 19px;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    }
+
+    .brand-text h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text p {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Desktop Navigation in Header */
+    .desktop-nav {
+      display: none;
+      gap: 6px;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+    }
+
+    @media (min-width: 768px) {
+      .desktop-nav {
+        display: flex;
+      }
+    }
+
+    .nav-btn {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.85rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .nav-btn.active {
+      background-color: var(--bg-secondary);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Status Pill */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background-color: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-amber);
+    }
+
+    .status-dot.ONLINE { background-color: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); }
+    .status-dot.ERROR { background-color: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+
+    /* Mobile Bottom Navigation Bar */
+    .mobile-bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      background-color: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+    }
+
+    @media (min-width: 768px) {
+      .mobile-bottom-bar {
+        display: none;
+      }
+    }
+
+    .mobile-tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      height: 100%;
+    }
+
+    .mobile-tab-btn span.tab-icon {
+      font-size: 1.2rem;
+    }
+
+    .mobile-tab-btn.active {
+      color: var(--accent-blue);
+    }
+
+    /* Container Views */
+    .main-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 16px;
+      flex: 1;
+    }
+
+    .view-panel {
+      display: none;
+    }
+
+    .view-panel.active {
+      display: block;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- TAB 1: LIVE VIEW --- */
+    .live-card {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .video-wrapper {
+      position: relative;
+      background: #000000;
+      aspect-ratio: 16 / 9;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #live-video-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transition: transform 0.15s ease-out;
+      cursor: grab;
+    }
+
+    #live-video-img:active {
+      cursor: grabbing;
+    }
+
+    .floating-badges {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .badge {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 0.72rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .badge.nvr-badge {
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      animation: pulse-dot 1.5s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .live-controls-bar {
+      background: var(--bg-card);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: var(--radius-md);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-secondary);
+      color: var(--text-main);
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background-color: var(--bg-card-hover);
+    }
+
+    .btn-primary {
+      background-color: var(--accent-blue);
+      color: white;
+      border-color: transparent;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-blue-hover);
+    }
+
+    /* --- TAB 2: RECORDINGS & ARCHIVE --- */
+    .archive-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .archive-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .clips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .clip-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: transform 0.15s, border-color 0.15s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .clip-card:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .clip-thumb-wrap {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      cursor: pointer;
+    }
+
+    .clip-thumb-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .thumb-play-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .clip-thumb-wrap:hover .thumb-play-overlay {
+      opacity: 1;
+    }
+
+    .play-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    .clip-duration-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.8);
+      font-size: 0.7rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+
+    .clip-motion-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(239, 68, 68, 0.9);
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: 4px;
+    }
+
+    .clip-locked-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(245, 158, 11, 0.9);
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+
+    .clip-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .clip-timestamp {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .clip-meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .clip-actions-row {
+      display: flex;
+      gap: 6px;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .clip-btn {
+      flex: 1;
+      padding: 7px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .clip-btn:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .clip-btn.lock-active {
+      color: var(--accent-amber);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    /* --- TAB 3: SYSTEM & STORAGE --- */
+    .system-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 4GB Storage Bar */
+    .storage-bar-wrap {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 999px;
+      height: 14px;
+      overflow: hidden;
+      margin: 12px 0 8px 0;
+      border: 1px solid var(--border-color);
+    }
+
+    .storage-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      width: 0%;
+      transition: width 0.4s ease-out;
+    }
+
+    .storage-bar-fill.near-limit {
+      background: linear-gradient(90deg, #f59e0b, #ef4444);
+    }
+
+    .stat-metric-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.85rem;
+    }
+
+    /* Video Playback Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .player-modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 860px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .player-header {
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .player-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .video-player-container {
+      width: 100%;
+      background: #000;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #archive-video-player {
+      width: 100%;
+      height: 100%;
+    }
+
+    .player-footer-controls {
+      padding: 12px 18px;
+      background: var(--bg-card);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .speed-btn-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .speed-btn {
+      padding: 4px 8px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .speed-btn.active {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    /* Toast */
+    .toast-box {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🍓</div>
+      <div class="brand-text">
+        <h1>Pi Camera NVR</h1>
+        <p id="top-url">rtsp://camera...</p>
+      </div>
+    </div>
+
+    <!-- Desktop Navigation -->
+    <nav class="desktop-nav">
+      <button class="nav-btn active" onclick="switchView('live')">🔴 Live Stream</button>
+      <button class="nav-btn" onclick="switchView('archive')">🎬 Clips Archive</button>
+      <button class="nav-btn" onclick="switchView('system')">📊 4GB Storage & Pi</button>
+    </nav>
+
+    <!-- Status Indicator -->
+    <div class="status-pill">
+      <div class="status-dot" id="live-dot"></div>
+      <span id="live-status-text">CONNECTING</span>
+    </div>
+  </header>
+
+  <!-- Mobile Bottom Navigation -->
+  <div class="mobile-bottom-bar">
+    <button class="mobile-tab-btn active" id="mob-live" onclick="switchView('live')">
+      <span class="tab-icon">📹</span>
+      <span>Live</span>
+    </button>
+    <button class="mobile-tab-btn" id="mob-archive" onclick="switchView('archive')">
+      <span class="tab-icon">🎬</span>
+      <span>Clips (<span id="mob-clip-count">0</span>)</span>
+    </button>
+    <button class="mobile-tab-btn" id="mob-system" onclick="switchView('system')">
+      <span class="tab-icon">📊</span>
+      <span>Storage & Pi</span>
+    </button>
+  </div>
+
+  <!-- Main Content Areas -->
+  <main class="main-content">
+
+    <!-- VIEW 1: LIVE VIEW -->
+    <section class="view-panel active" id="view-live">
+      <div class="live-card">
+        <div class="video-wrapper" id="live-wrapper">
+          <div class="floating-badges">
+            <div class="badge" id="badge-fps">⚡ 0.0 FPS</div>
+            <div class="badge" id="badge-res">📐 1920x1080</div>
+            <div class="badge nvr-badge">🔴 15-MIN NVR ACTIVE</div>
+          </div>
+
+          <img id="live-video-img" src="/video_feed" alt="Live Camera" draggable="false">
+        </div>
+
+        <div class="live-controls-bar">
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" onclick="takeLiveSnapshot()">📸 Snapshot</button>
+            <button class="btn" onclick="switchView('archive')">🎬 Browse Clips</button>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn" onclick="adjustLiveZoom(-0.25)">➖</button>
+            <button class="btn" onclick="resetLiveZoom()">Reset Zoom</button>
+            <button class="btn" onclick="adjustLiveZoom(0.25)">➕</button>
+            <button class="btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: CLIPS ARCHIVE & PLAYBACK -->
+    <section class="view-panel" id="view-archive">
+      <div class="archive-header">
+        <div class="archive-title">
+          <span>🎬 15-Minute Video Segments</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;" id="archive-total-text">(0 clips, 0.0 MB)</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn" onclick="loadClipsCatalog()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <!-- Clips Grid -->
+      <div class="clips-grid" id="clips-container">
+        <div style="text-align: center; color: var(--text-muted); padding: 40px; grid-column: 1 / -1;">
+          Loading recorded clips...
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: 4GB STORAGE & PI SYSTEM HEALTH -->
+    <section class="view-panel" id="view-system">
+      <div class="system-grid">
+        
+        <!-- 4GB Storage Pool Card -->
+        <div class="card">
+          <div class="card-title">💾 4.0 GB Storage Pool (FIFO Auto-Purge)</div>
+          
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+            <span style="color: var(--text-muted);">Used Disk Memory:</span>
+            <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-storage-used">0.0 MB / 4.0 GB</span>
+          </div>
+
+          <div class="storage-bar-wrap">
+            <div class="storage-bar-fill" id="sys-storage-bar"></div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 14px;">
+            <span>0 GB</span>
+            <span id="sys-storage-percent">0%</span>
+            <span>4.0 GB Cap</span>
+          </div>
+
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Total Clips Saved:</span>
+            <span style="font-weight: 700;" id="sys-clip-count">0</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Locked / Protected:</span>
+            <span style="font-weight: 700; color: var(--accent-amber);" id="sys-locked-count">0 clips</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Retention Policy:</span>
+            <span style="font-weight: 600; color: var(--accent-emerald);">FIFO (Oldest Auto-Deleted)</span>
+          </div>
+        </div>
+
+        <!-- Raspberry Pi Health Card -->
+        <div class="card">
+          <div class="card-title">🍓 Raspberry Pi Health</div>
+          
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">CPU Temperature:</span>
+            <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-cpu-temp">-- °C</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">RAM Usage:</span>
+            <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-ram">-- MB</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Recording Engine:</span>
+            <span style="font-weight: 700; color: var(--accent-emerald);">Direct Stream Copy (&lt;1% CPU)</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Audio Recording:</span>
+            <span style="font-weight: 700; color: var(--accent-emerald);">AAC Enabled 🔊</span>
+          </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Segment Chunk Duration:</span>
+            <span style="font-weight: 700;">15 Minutes (900s)</span>
+          </div>
+        </div>
+
+        <!-- RTSP Configuration Card -->
+        <div class="card">
+          <div class="card-title">⚙️ RTSP Stream Configuration</div>
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">RTSP URL (Saved to high_qual.txt):</label>
+            <input type="text" id="cfg-rtsp-url" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; color: #fff; font-family: 'JetBrains Mono'; font-size: 0.8rem;">
+          </div>
+          <button class="btn btn-primary" onclick="saveRtspConfig()" style="width: 100%;">Save & Restart Recorder</button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Video Playback Modal -->
+  <div class="modal-backdrop" id="player-modal">
+    <div class="player-modal">
+      <div class="player-header">
+        <span class="player-title" id="modal-video-title">clip_20260829.mp4</span>
+        <button class="btn" onclick="closePlayerModal()" style="padding: 4px 10px;">✕ Close</button>
+      </div>
+
+      <div class="video-player-container">
+        <!-- Native HTML5 video with Range request support for seeking -->
+        <video id="archive-video-player" controls playsinline preload="metadata">
+          Your browser does not support HTML5 video playback.
+        </video>
+      </div>
+
+      <div class="player-footer-controls">
+        <div class="speed-btn-group">
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-right: 4px; display: flex; align-items: center;">Speed:</span>
+          <button class="speed-btn" onclick="setSpeed(0.5)">0.5x</button>
+          <button class="speed-btn active" onclick="setSpeed(1.0)">1.0x</button>
+          <button class="speed-btn" onclick="setSpeed(1.5)">1.5x</button>
+          <button class="speed-btn" onclick="setSpeed(2.0)">2.0x</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <a id="modal-download-btn" href="#" download class="btn btn-primary" style="text-decoration: none;">⬇️ Download Clip</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Box -->
+  <div class="toast-box" id="toast-container"></div>
+
+  <script>
+    let activeView = 'live';
+    let zoomLevel = 1.0;
+    const videoImg = document.getElementById('live-video-img');
+    const playerModal = document.getElementById('player-modal');
+    const videoPlayer = document.getElementById('archive-video-player');
+
+    // Navigation Switcher
+    function switchView(view) {
+      activeView = view;
+      document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.mobile-tab-btn').forEach(el => el.classList.remove('active'));
+
+      document.getElementById(`view-${view}`).classList.add('active');
+      
+      const deskBtn = document.querySelector(`.nav-btn[onclick="switchView('${view}')"]`);
+      if (deskBtn) deskBtn.classList.add('active');
+
+      const mobBtn = document.getElementById(`mob-${view}`);
+      if (mobBtn) mobBtn.classList.add('active');
+
+      if (view === 'archive') {
+        loadClipsCatalog();
+      } else if (view === 'system') {
+        loadSystemStats();
+      }
+    }
+
+    // Status polling
+    async function pollStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+
+        // Header & Live Badges
+        document.getElementById('top-url').innerText = data.rtsp_url;
+        document.getElementById('live-status-text').innerText = data.status;
+        const dot = document.getElementById('live-dot');
+        dot.className = `status-dot ${data.status}`;
+
+        document.getElementById('badge-fps').innerText = `⚡ ${data.fps} FPS`;
+        document.getElementById('badge-res').innerText = `📐 ${data.width}x${data.height}`;
+
+        // Storage Bar
+        if (data.storage) {
+          updateStorageBar(data.storage);
+        }
+
+        // System
+        if (data.system) {
+          const tempEl = document.getElementById('sys-cpu-temp');
+          tempEl.innerText = `${data.system.cpu_temp} °C`;
+          if (data.system.cpu_temp > 65) tempEl.style.color = 'var(--accent-red)';
+          else if (data.system.cpu_temp > 50) tempEl.style.color = 'var(--accent-amber)';
+          else tempEl.style.color = 'var(--accent-emerald)';
+
+          document.getElementById('sys-ram').innerText = `${data.system.ram_used_mb} / ${data.system.ram_total_mb} MB (${data.system.ram_percent}%)`;
+        }
+
+      } catch (err) {
+        console.error("Status error:", err);
+      }
+    }
+
+    function updateStorageBar(storage) {
+      document.getElementById('sys-storage-used').innerText = `${storage.used_mb} MB / ${storage.max_gb} GB`;
+      document.getElementById('sys-storage-percent').innerText = `${storage.percent_used}%`;
+      document.getElementById('sys-clip-count').innerText = storage.clip_count;
+      document.getElementById('sys-locked-count').innerText = `${storage.locked_count} clips`;
+      document.getElementById('mob-clip-count').innerText = storage.clip_count;
+
+      const bar = document.getElementById('sys-storage-bar');
+      bar.style.width = `${storage.percent_used}%`;
+      if (storage.is_near_limit) {
+        bar.classList.add('near-limit');
+      } else {
+        bar.classList.remove('near-limit');
+      }
+    }
+
+    // Load Clips Catalog
+    async function loadClipsCatalog() {
+      try {
+        const res = await fetch('/api/clips');
+        const data = await res.json();
+        const container = document.getElementById('clips-container');
+
+        if (!data.clips || data.clips.length === 0) {
+          container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 40px; grid-column: 1 / -1;">No recorded 15-minute clips yet. The recorder is continuously saving new segments...</div>`;
+          document.getElementById('archive-total-text').innerText = '(0 clips)';
+          return;
+        }
+
+        document.getElementById('archive-total-text').innerText = `(${data.clips.length} clips, ${data.storage.used_mb} MB stored)`;
+
+        container.innerHTML = data.clips.map(clip => `
+          <div class="clip-card">
+            <div class="clip-thumb-wrap" onclick="playClipOnline('${clip.filename}', '${clip.video_url}')">
+              <img class="clip-thumb-img" src="${clip.thumbnail_url}" alt="${clip.filename}" loading="lazy">
+              <div class="thumb-play-overlay">
+                <div class="play-circle">▶</div>
+              </div>
+              <div class="clip-duration-badge">⏱️ 15m</div>
+              ${clip.has_motion ? `<div class="clip-motion-badge">🔥 MOTION (${clip.motion_events})</div>` : ''}
+              ${clip.locked ? `<div class="clip-locked-badge">🔒 LOCKED</div>` : ''}
+            </div>
+
+            <div class="clip-body">
+              <div class="clip-timestamp">${clip.timestamp}</div>
+              <div class="clip-meta-row">
+                <span>Size: <strong>${clip.size_mb} MB</strong></span>
+                <span>Format: <strong>MP4 (H.264+AAC)</strong></span>
+              </div>
+
+              <div class="clip-actions-row">
+                <button class="clip-btn ${clip.locked ? 'lock-active' : ''}" onclick="toggleClipLock('${clip.filename}', ${!clip.locked})">
+                  ${clip.locked ? '🔒 Protected' : '🔓 Protect'}
+                </button>
+                <a class="clip-btn" href="${clip.video_url}" download>
+                  ⬇️ Save
+                </a>
+                <button class="clip-btn" onclick="deleteClip('${clip.filename}')" style="color: var(--accent-red);">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        console.error("Clips fetch error:", err);
+      }
+    }
+
+    // Playback Modal
+    function playClipOnline(filename, videoUrl) {
+      document.getElementById('modal-video-title').innerText = filename;
+      document.getElementById('modal-download-btn').href = videoUrl;
+      
+      videoPlayer.src = videoUrl;
+      videoPlayer.playbackRate = 1.0;
+      playerModal.classList.add('show');
+      videoPlayer.play().catch(() => {});
+    }
+
+    function closePlayerModal() {
+      videoPlayer.pause();
+      videoPlayer.src = '';
+      playerModal.classList.remove('show');
+    }
+
+    function setSpeed(speed) {
+      videoPlayer.playbackRate = speed;
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      const activeBtn = document.querySelector(`.speed-btn[onclick="setSpeed(${speed})"]`);
+      if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    async function toggleClipLock(filename, lockState) {
+      try {
+        const res = await fetch('/api/clips/lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, locked: lockState })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(lockState ? `Locked ${filename} (Protected from 4GB purge)` : `Unlocked ${filename}`);
+          loadClipsCatalog();
+        }
+      } catch (e) {
+        showToast(`Lock failed: ${e}`, '❌');
+      }
+    }
+
+    async function deleteClip(filename) {
+      if (!confirm(`Delete ${filename}?`)) return;
+      try {
+        const res = await fetch('/api/clips/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Deleted ${filename}`);
+          loadClipsCatalog();
+        }
+      } catch (e) {
+        showToast(`Delete failed: ${e}`, '❌');
+      }
+    }
+
+    // Live Snapshot
+    async function takeLiveSnapshot() {
+      try {
+        const res = await fetch('/api/snapshot', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Snapshot saved: ${data.filename}`, '📸');
+        }
+      } catch (e) {
+        showToast(`Snapshot error: ${e}`, '❌');
+      }
+    }
+
+    // Zoom & Fullscreen
+    function adjustLiveZoom(delta) {
+      zoomLevel = Math.min(Math.max(1.0, zoomLevel + delta), 4.0);
+      videoImg.style.transform = `scale(${zoomLevel})`;
+    }
+
+    function resetLiveZoom() {
+      zoomLevel = 1.0;
+      videoImg.style.transform = 'scale(1)';
+    }
+
+    function toggleFullscreen() {
+      const el = document.getElementById('live-wrapper');
+      if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(err => alert(err.message));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    async function loadSystemStats() {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      document.getElementById('cfg-rtsp-url').value = data.rtsp_url;
+    }
+
+    async function saveRtspConfig() {
+      const newUrl = document.getElementById('cfg-rtsp-url').value.trim();
+      if (!newUrl) return;
+
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rtsp_url: newUrl })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('RTSP configuration updated & recorder restarted!', '✅');
+      }
+    }
+
+    function showToast(msg, icon = 'ℹ️') {
+      const box = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `<span>${icon}</span> <span>${msg}</span>`;
+      box.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+
+    // Polling Loop
+    setInterval(pollStatus, 1500);
+    pollStatus();
+  </script>
+</body>
+</html>
