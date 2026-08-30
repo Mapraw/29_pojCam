@@ -694,7 +694,7 @@
     <nav class="desktop-nav">
       <button class="nav-btn active" onclick="switchView('live')">🔴 Live Stream</button>
       <button class="nav-btn" onclick="switchView('archive')">🎬 Clips Archive</button>
-      <button class="nav-btn" onclick="switchView('system')">📊 4GB Storage & Pi</button>
+      <button class="nav-btn" onclick="switchView('system')">📊 8GB Storage & Settings</button>
     </nav>
 
     <!-- Status Indicator -->
@@ -790,13 +790,13 @@
     <section class="view-panel" id="view-system">
       <div class="system-grid">
         
-        <!-- 4GB Storage Pool Card -->
+        <!-- Storage Pool Card -->
         <div class="card">
-          <div class="card-title">💾 4.0 GB Storage Pool (FIFO Auto-Purge)</div>
+          <div class="card-title" id="storage-card-title">💾 8.0 GB Storage Pool (FIFO Auto-Purge)</div>
           
           <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
             <span style="color: var(--text-muted);">Used Disk Memory:</span>
-            <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-storage-used">0.0 MB / 4.0 GB</span>
+            <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-storage-used">0.0 MB / 8.0 GB</span>
           </div>
 
           <div class="storage-bar-wrap">
@@ -806,7 +806,7 @@
           <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 14px;">
             <span>0 GB</span>
             <span id="sys-storage-percent">0%</span>
-            <span>4.0 GB Cap</span>
+            <span id="sys-storage-cap-label">8.0 GB Cap</span>
           </div>
 
           <div class="stat-metric-row">
@@ -819,8 +819,49 @@
           </div>
           <div class="stat-metric-row">
             <span style="color: var(--text-muted);">Retention Policy:</span>
-            <span style="font-weight: 600; color: var(--accent-emerald);">FIFO (Oldest Auto-Deleted)</span>
+            <span style="font-weight: 600; color: var(--accent-emerald);">FIFO (Oldest Auto-Purged)</span>
           </div>
+          <div class="stat-metric-row">
+            <span style="color: var(--text-muted);">Est. Video Retention:</span>
+            <span style="font-weight: 700; color: var(--accent-emerald);" id="sys-retention-est">~3.9 Days (480p @ 10fps)</span>
+          </div>
+        </div>
+
+        <!-- NVR Quality & Storage Pool Settings -->
+        <div class="card">
+          <div class="card-title">🎛️ NVR Quality & Storage Settings</div>
+          
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">
+              🎬 Video Resolution & FPS:
+            </label>
+            <select id="cfg-quality-profile" onchange="onQualityChange()" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 9px 12px; color: #fff; font-size: 0.82rem; font-weight: 600;">
+              <option value="480p_10fps">480p @ 10 FPS (Recommended: ~3.9 Days in 8GB)</option>
+              <option value="360p_10fps">360p @ 10 FPS (Economy: ~5.0 Days in 8GB)</option>
+              <option value="720p_native">720p HD @ 15 FPS (Substream: ~1.7 Days in 8GB)</option>
+              <option value="1080p_full">1080p Full HD @ 15 FPS (Full Quality: ~12 Hours in 8GB)</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">
+              💾 Storage Limit Cap:
+            </label>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;">
+              <button type="button" class="btn" id="cap-btn-4" onclick="setStorageLimitVal(4.0)">4 GB</button>
+              <button type="button" class="btn btn-primary" id="cap-btn-8" onclick="setStorageLimitVal(8.0)">8 GB</button>
+              <button type="button" class="btn" id="cap-btn-16" onclick="setStorageLimitVal(16.0)">16 GB</button>
+              <button type="button" class="btn" id="cap-btn-32" onclick="setStorageLimitVal(32.0)">32 GB</button>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="number" id="cfg-storage-limit" min="1" max="500" step="0.5" value="8.0" style="width: 90px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 6px 10px; color: #fff; font-family: 'JetBrains Mono'; font-size: 0.82rem;">
+              <span style="font-size: 0.8rem; color: var(--text-muted);">GB storage pool cap</span>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" onclick="saveNvrConfig()" style="width: 100%;">
+            💾 Apply & Save Settings
+          </button>
         </div>
 
         <!-- Raspberry Pi Health Card -->
@@ -836,8 +877,8 @@
             <span style="font-weight: 700; font-family: 'JetBrains Mono';" id="sys-ram">-- MB</span>
           </div>
           <div class="stat-metric-row">
-            <span style="color: var(--text-muted);">Recording Engine:</span>
-            <span style="font-weight: 700; color: var(--accent-emerald);">Direct Stream Copy (&lt;1% CPU)</span>
+            <span style="color: var(--text-muted);">Active Resolution:</span>
+            <span style="font-weight: 700; color: var(--accent-emerald);" id="sys-res-profile">480p @ 10 FPS</span>
           </div>
           <div class="stat-metric-row">
             <span style="color: var(--text-muted);">Audio Recording:</span>
@@ -853,10 +894,10 @@
         <div class="card">
           <div class="card-title">⚙️ RTSP Stream Configuration</div>
           <div style="margin-bottom: 12px;">
-            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">RTSP URL (Saved to high_qual.txt):</label>
-            <input type="text" id="cfg-rtsp-url" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; color: #fff; font-family: 'JetBrains Mono'; font-size: 0.8rem;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">RTSP URL (Saved to config.json & high_qual.txt):</label>
+            <input type="text" id="cfg-rtsp-url" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; color: #fff; font-family: 'JetBrains Mono'; font-size: 0.8rem;">
           </div>
-          <button class="btn btn-primary" onclick="saveRtspConfig()" style="width: 100%;">Save & Restart Recorder</button>
+          <button class="btn" onclick="saveRtspConfig()" style="width: 100%;">Save RTSP URL</button>
         </div>
 
       </div>
@@ -1163,9 +1204,91 @@
     }
 
     async function loadSystemStats() {
-      const res = await fetch('/api/status');
-      const data = await res.json();
-      document.getElementById('cfg-rtsp-url').value = data.rtsp_url;
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        if (data.config) {
+          document.getElementById('cfg-rtsp-url').value = data.config.rtsp_url || '';
+          if (data.config.quality_profile) {
+            document.getElementById('cfg-quality-profile').value = data.config.quality_profile;
+          }
+          if (data.config.storage_limit_gb) {
+            document.getElementById('cfg-storage-limit').value = data.config.storage_limit_gb;
+            highlightCapBtn(data.config.storage_limit_gb);
+          }
+        }
+        onQualityChange();
+      } catch (err) {
+        console.error("Settings load error:", err);
+      }
+    }
+
+    function setStorageLimitVal(gb) {
+      document.getElementById('cfg-storage-limit').value = gb;
+      highlightCapBtn(gb);
+      onQualityChange();
+    }
+
+    function highlightCapBtn(gb) {
+      [4, 8, 16, 32].forEach(val => {
+        const btn = document.getElementById(`cap-btn-${val}`);
+        if (btn) {
+          if (parseFloat(gb) === val) {
+            btn.className = 'btn btn-primary';
+          } else {
+            btn.className = 'btn';
+          }
+        }
+      });
+    }
+
+    function onQualityChange() {
+      const profile = document.getElementById('cfg-quality-profile').value;
+      const gb = parseFloat(document.getElementById('cfg-storage-limit').value) || 8.0;
+      
+      const rates = {
+        "480p_10fps": { perDay: 2.06, label: "480p @ 10 FPS" },
+        "360p_10fps": { perDay: 1.60, label: "360p @ 10 FPS" },
+        "720p_native": { perDay: 4.68, label: "720p HD @ 15 FPS" },
+        "1080p_full": { perDay: 15.73, label: "1080p Full HD @ 15 FPS" }
+      };
+
+      const info = rates[profile] || rates["480p_10fps"];
+      const estDays = (gb / info.perDay).toFixed(1);
+      
+      document.getElementById('sys-retention-est').innerText = `~${estDays} Days (${info.label})`;
+      document.getElementById('sys-res-profile').innerText = info.label;
+      document.getElementById('storage-card-title').innerText = `💾 ${gb.toFixed(1)} GB Storage Pool (FIFO Auto-Purge)`;
+      document.getElementById('sys-storage-cap-label').innerText = `${gb.toFixed(1)} GB Cap`;
+    }
+
+    async function saveNvrConfig() {
+      const profile = document.getElementById('cfg-quality-profile').value;
+      const storageLimit = parseFloat(document.getElementById('cfg-storage-limit').value);
+      
+      if (isNaN(storageLimit) || storageLimit < 1.0) {
+        showToast('Please enter a valid storage limit of at least 1.0 GB', '⚠️');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quality_profile: profile,
+            storage_limit_gb: storageLimit
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Applied: ${profile} & ${storageLimit} GB Limit!`, '✅');
+          pollStatus();
+          onQualityChange();
+        }
+      } catch (err) {
+        showToast(`Save error: ${err}`, '❌');
+      }
     }
 
     async function saveRtspConfig() {

@@ -38,10 +38,11 @@ def check_camera_reachable(url: str, timeout: float = 2.0) -> bool:
 
 
 class ContinuousNVRRecorder:
-    def __init__(self, rtsp_url: str, storage_mgr: StorageManager, segment_duration: int = SEGMENT_DURATION_SECONDS):
+    def __init__(self, rtsp_url: str, storage_mgr: StorageManager, segment_duration: int = SEGMENT_DURATION_SECONDS, quality_profile: str = "480p_10fps"):
         self.rtsp_url = rtsp_url
         self.storage_mgr = storage_mgr
         self.segment_duration = segment_duration
+        self.quality_profile = quality_profile
         self.motion_detector = MotionDetector()
 
         self.is_running = False
@@ -58,6 +59,14 @@ class ContinuousNVRRecorder:
         self.current_recording_filename: Optional[str] = None
         self.segment_start_time: float = time.time()
         self.proc_lock = threading.Lock()
+
+    def set_quality_profile(self, new_profile: str):
+        """Updates the video recording quality profile (e.g. 480p_10fps, 720p_native, 1080p_full)."""
+        if self.quality_profile != new_profile:
+            print(f"[NVR Recorder] Switching quality profile: {self.quality_profile} -> {new_profile}")
+            self.quality_profile = new_profile
+            if self.is_running:
+                self.restart()
 
     def start(self):
         """Starts the background continuous 15-minute chunk recording."""
@@ -139,34 +148,99 @@ class ContinuousNVRRecorder:
             "size_mb": round(size_bytes / (1024 * 1024), 2),
             "elapsed_seconds": elapsed,
             "elapsed_formatted": f"{elapsed//60:02d}:{elapsed%60:02d}",
+            "quality_profile": self.quality_profile,
             "is_recording": True
         }
 
     def _build_ffmpeg_cmd(self, output_filename: str) -> list:
         """
-        Builds robust FFmpeg command with explicit single-clip duration (15 min):
-        - Direct video copy (-c:v copy) -> <1% CPU on Raspberry Pi.
-        - Audio AAC encoding (-c:a aac).
-        - -t 900 records exactly 15 minutes per file.
-        - -movflags +faststart flushes moov atom cleanly on completion.
+        Builds FFmpeg command based on quality profile:
+        - 480p_10fps (Default): 854x480 @ 10 FPS, 220k bitrate (~2.06 GB / day -> ~3.9 days in 8GB).
+        - 360p_10fps: 640x360 @ 10 FPS, 150k bitrate (~1.60 GB / day -> ~5.0 days in 8GB).
+        - 720p_native: 1280x720 @ 15 FPS from stream2 (~4.68 GB / day -> ~1.7 days in 8GB).
+        - 1080p_full: 1920x1080 @ 15 FPS from stream1 (~15.73 GB / day -> ~12 Hours in 8GB).
         """
         output_path = str(RECORDINGS_DIR / output_filename)
+        input_url = self.rtsp_url
 
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel", "warning",
-            "-rtsp_transport", "tcp",
-            "-timeout", "5000000",             # 5-second socket I/O timeout (microseconds)
-            "-fflags", "+genpts+discardcorrupt",
-            "-i", self.rtsp_url,
-            "-t", str(self.segment_duration),  # Record 15-min segment
-            "-c:v", "copy",                     # Direct Stream Copy (Zero CPU encoding)
-            "-c:a", "aac",                      # Remux/encode audio stream to standard AAC
-            "-b:a", "64k",
-            "-movflags", "+faststart",
-            output_path
-        ]
+        if self.quality_profile == "480p_10fps":
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "warning",
+                "-rtsp_transport", "tcp",
+                "-timeout", "5000000",
+                "-fflags", "+genpts+discardcorrupt",
+                "-i", input_url,
+                "-t", str(self.segment_duration),
+                "-vf", "scale=854:480,fps=10",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-b:v", "220k",
+                "-maxrate", "280k",
+                "-bufsize", "500k",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "32k",
+                "-movflags", "+faststart",
+                output_path
+            ]
+        elif self.quality_profile == "360p_10fps":
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "warning",
+                "-rtsp_transport", "tcp",
+                "-timeout", "5000000",
+                "-fflags", "+genpts+discardcorrupt",
+                "-i", input_url,
+                "-t", str(self.segment_duration),
+                "-vf", "scale=640:360,fps=10",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-b:v", "150k",
+                "-maxrate", "200k",
+                "-bufsize", "400k",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "32k",
+                "-movflags", "+faststart",
+                output_path
+            ]
+        elif self.quality_profile == "720p_native":
+            sub_url = input_url.replace("/stream1", "/stream2")
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "warning",
+                "-rtsp_transport", "tcp",
+                "-timeout", "5000000",
+                "-fflags", "+genpts+discardcorrupt",
+                "-i", sub_url,
+                "-t", str(self.segment_duration),
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "64k",
+                "-movflags", "+faststart",
+                output_path
+            ]
+        else:  # 1080p_full
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "warning",
+                "-rtsp_transport", "tcp",
+                "-timeout", "5000000",
+                "-fflags", "+genpts+discardcorrupt",
+                "-i", input_url,
+                "-t", str(self.segment_duration),
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "64k",
+                "-movflags", "+faststart",
+                output_path
+            ]
+
         return cmd
 
     def _recording_loop(self):
@@ -189,8 +263,8 @@ class ContinuousNVRRecorder:
 
             cmd = self._build_ffmpeg_cmd(output_filename)
             self.status = "RECORDING"
-            self.status_message = f"Recording {output_filename}"
-            print(f"[NVR Recorder] Camera online! Starting new segment: {output_filename}...")
+            self.status_message = f"Recording {output_filename} ({self.quality_profile})"
+            print(f"[NVR Recorder] Camera online! Starting new {self.quality_profile} segment: {output_filename}...")
 
             proc = None
             try:
@@ -253,7 +327,6 @@ class ContinuousNVRRecorder:
                     thumb_file = THUMBNAILS_DIR / f"{completed_file.stem}.jpg"
                     self._generate_thumbnail(completed_file, thumb_file)
                 else:
-                    # Clean up empty or broken 0-byte clip
                     try:
                         completed_file.unlink(missing_ok=True)
                     except Exception:
@@ -261,7 +334,6 @@ class ContinuousNVRRecorder:
 
             if not self.stop_event.is_set():
                 self.status = "RECONNECTING"
-                # If exited with error, wait 2.5s backoff to let camera RTSP session clear
                 backoff = 2.5 if (proc is None or proc.poll() != 0) else 0.5
                 self.status_message = "Preparing next recording segment..."
                 time.sleep(backoff)
@@ -270,7 +342,7 @@ class ContinuousNVRRecorder:
         """
         Background maintenance thread:
         1. Generates thumbnails for any completed MP4 clips.
-        2. Enforces the 4.0 GB FIFO storage cap.
+        2. Enforces the storage cap.
         """
         while not self.stop_event.is_set():
             try:
@@ -279,7 +351,6 @@ class ContinuousNVRRecorder:
                 active_name = self.current_recording_filename
 
                 for clip in video_clips:
-                    # Skip active file
                     if active_name and clip.name == active_name:
                         continue
 
@@ -287,10 +358,10 @@ class ContinuousNVRRecorder:
                     if not thumb_path.exists() and clip.stat().st_size > 10000:
                         self._generate_thumbnail(clip, thumb_path)
 
-                # 2. Enforce 4GB storage limit
+                # 2. Enforce storage limit
                 freed, deleted = self.storage_mgr.cleanup_if_needed()
                 if deleted:
-                    print(f"[NVR Recorder] 4GB Storage cleanup freed {freed / (1024*1024):.1f} MB ({len(deleted)} clips).")
+                    print(f"[NVR Recorder] Storage cleanup freed {freed / (1024*1024):.1f} MB ({len(deleted)} clips).")
 
             except Exception as e:
                 print(f"[NVR Recorder] Watcher error: {e}")

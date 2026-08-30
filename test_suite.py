@@ -111,25 +111,32 @@ def test_full_system():
     storage_res = json.loads(urllib.request.urlopen(f"{base_url}/api/storage").read().decode())
     print(f"  -> Storage API: 200 OK (Max Pool: {storage_res['max_gb']} GB)")
 
-    # 4.4 Test HTTP 206 Range Request on existing video clip
+    # 4.4 Test Settings API (8GB limit and 480p 10fps quality)
+    settings_res = json.loads(urllib.request.urlopen(f"{base_url}/api/settings").read().decode())
+    print(f"  -> Settings API: 200 OK (Profile: {settings_res['current_quality']}, Pool: {settings_res['current_storage_limit_gb']} GB)")
+    assert settings_res['current_storage_limit_gb'] >= 8.0, "Storage limit should be 8.0 GB"
+    assert settings_res['current_quality'] == "480p_10fps", "Quality should be 480p_10fps"
+
+    # 4.5 Test HTTP 206 Range Request on existing video clip
     video_files = list(app.RECORDINGS_DIR.glob("*.mp4"))
     if video_files:
         test_video = video_files[0].name
         req = urllib.request.Request(f"{base_url}/api/clips/{test_video}")
         req.add_header("Range", "bytes=0-1023") # request first 1KB
         resp = urllib.request.urlopen(req)
-        chunk = resp.read()
-        print(f"  -> HTTP 206 Range Response Code: {resp.getcode()} (Bytes returned: {len(chunk)})")
+        assert resp.getcode() == 206, f"Expected HTTP 206, got {resp.getcode()}"
+        bytes_data = resp.read()
+        print(f"  -> HTTP 206 Range Response Code: {resp.getcode()} (Bytes returned: {len(bytes_data)})")
         print(f"  -> Content-Range Header: {resp.headers.get('Content-Range')}")
-        assert resp.getcode() == 206, "Must return HTTP 206 Partial Content for mobile seeking"
-        assert len(chunk) == 1024, "Chunk size mismatch"
+        assert len(bytes_data) == 1024, f"Expected 1024 bytes, got {len(bytes_data)}"
         print("  [SUCCESS] TEST 4 PASSED: HTTP 206 Mobile Range Streaming verified.")
     else:
         print("  -> No existing MP4 to test range requests on, skipping byte range test.")
+        print("  [SUCCESS] TEST 4 PASSED: Web Server & APIs verified.")
 
     print("\n" + "=" * 65)
     print(" [ALL PASSED] RASPBERRY PI SERVER & NVR SUITE IS FULLY VERIFIED!")
-    print("=" * 65)
+    print("=" * 65 + "\n")
 
 if __name__ == '__main__':
     test_full_system()

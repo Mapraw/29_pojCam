@@ -12,10 +12,10 @@ METADATA_FILE = RECORDINGS_DIR / "metadata.json"
 RECORDINGS_DIR.mkdir(exist_ok=True)
 THUMBNAILS_DIR.mkdir(exist_ok=True)
 
-# Default: 4.0 GB Storage Cap
-DEFAULT_MAX_STORAGE_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB
-DEFAULT_SOFT_LIMIT_RATIO = 0.92                     # Clean up when reaching 92% (approx 3.68 GB)
-DEFAULT_TARGET_PURGE_RATIO = 0.80                   # Purge down to 80% (approx 3.2 GB)
+# Default: 8.0 GB Storage Cap (Upgraded for 2-3 day retention)
+DEFAULT_MAX_STORAGE_BYTES = 8 * 1024 * 1024 * 1024  # 8 GB
+DEFAULT_SOFT_LIMIT_RATIO = 0.94                     # Clean up when reaching 94% (approx 7.52 GB)
+DEFAULT_TARGET_PURGE_RATIO = 0.82                   # Purge down to 82% (approx 6.56 GB)
 
 
 class StorageManager:
@@ -32,6 +32,13 @@ class StorageManager:
         self.target_purge_bytes = int(self.max_storage_bytes * DEFAULT_TARGET_PURGE_RATIO)
         
         self.metadata: Dict[str, Any] = self._load_metadata()
+
+    def set_max_storage_gb(self, new_gb: float):
+        """Dynamically updates the storage pool cap in gigabytes."""
+        self.max_storage_bytes = int(new_gb * 1024 * 1024 * 1024)
+        self.soft_limit_bytes = int(self.max_storage_bytes * DEFAULT_SOFT_LIMIT_RATIO)
+        self.target_purge_bytes = int(self.max_storage_bytes * DEFAULT_TARGET_PURGE_RATIO)
+        print(f"[StorageManager] Storage limit updated to {new_gb} GB ({self.max_storage_bytes} bytes).")
 
     def _load_metadata(self) -> Dict[str, Any]:
         """Loads clip metadata from JSON or returns empty dict."""

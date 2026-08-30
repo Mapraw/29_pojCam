@@ -13,13 +13,21 @@ from stream_manager import RTSPStreamManager, SNAPSHOTS_DIR, RECORDINGS_DIR
 from storage_manager import StorageManager, THUMBNAILS_DIR
 from recorder import ContinuousNVRRecorder
 from system_info import get_system_metrics
+from config_manager import load_config, save_config, QUALITY_PROFILES
 
 app = Flask(__name__)
 
-# Initialize Managers
-storage_mgr = StorageManager(recordings_dir=RECORDINGS_DIR, max_storage_bytes=4 * 1024 * 1024 * 1024)
+# Initialize Config & Managers
+app_config = load_config()
+initial_storage_bytes = int(app_config.get("storage_limit_gb", 8.0) * 1024 * 1024 * 1024)
+storage_mgr = StorageManager(recordings_dir=RECORDINGS_DIR, max_storage_bytes=initial_storage_bytes)
 stream_mgr = RTSPStreamManager()
-nvr_recorder = ContinuousNVRRecorder(rtsp_url=stream_mgr.rtsp_url, storage_mgr=storage_mgr, segment_duration=900)
+nvr_recorder = ContinuousNVRRecorder(
+    rtsp_url=stream_mgr.rtsp_url,
+    storage_mgr=storage_mgr,
+    segment_duration=app_config.get("segment_duration_seconds", 900),
+    quality_profile=app_config.get("quality_profile", "480p_10fps")
+)
 
 def generate_mjpeg():
     """Generator function that produces MJPEG stream frames."""
@@ -205,14 +213,48 @@ def api_snapshot():
 def serve_snapshot(filename):
     return send_from_directory(SNAPSHOTS_DIR, filename)
 
-@app.route('/api/settings', methods=['POST'])
+@app.route('/api/settings', methods=['GET', 'POST'])
 def api_settings():
+    if request.method == 'GET':
+        config = load_config()
+        return jsonify({
+            "config": config,
+            "quality_profiles": QUALITY_PROFILES,
+            "current_quality": nvr_recorder.quality_profile,
+            "current_storage_limit_gb": round(storage_mgr.max_storage_bytes / (1024 * 1024 * 1024), 1),
+            "status": stream_mgr.get_status()
+        })
+
     data = request.json or {}
+    config_updates = {}
+
+    # 1. Handle Storage Limit change (e.g. 8.0 GB)
+    if "storage_limit_gb" in data:
+        try:
+            new_gb = float(data["storage_limit_gb"])
+            if new_gb >= 1.0:
+                storage_mgr.set_max_storage_gb(new_gb)
+                config_updates["storage_limit_gb"] = new_gb
+        except Exception as e:
+            print(f"[API Settings] Storage limit error: {e}")
+
+    # 2. Handle Quality Profile change (e.g. 480p_10fps)
+    if "quality_profile" in data and data["quality_profile"] in QUALITY_PROFILES:
+        new_profile = data["quality_profile"]
+        nvr_recorder.set_quality_profile(new_profile)
+        config_updates["quality_profile"] = new_profile
+
+    # 3. Handle RTSP URL change
     if "rtsp_url" in data and data["rtsp_url"] != stream_mgr.rtsp_url:
         new_url = data["rtsp_url"].strip()
         stream_mgr.save_url(new_url)
         nvr_recorder.restart(new_url)
-    
+        config_updates["rtsp_url"] = new_url
+
+    # Save to config.json
+    if config_updates:
+        save_config(config_updates)
+
     stream_mgr.update_settings(
         transport=data.get("transport"),
         brightness=data.get("brightness"),
@@ -221,7 +263,13 @@ def api_settings():
         flip_v=data.get("flip_v"),
         rotate=data.get("rotate_angle")
     )
-    return jsonify({"success": True, "status": stream_mgr.get_status()})
+
+    return jsonify({
+        "success": True,
+        "config": load_config(),
+        "storage": storage_mgr.get_storage_info(),
+        "status": stream_mgr.get_status()
+    })
 
 def find_available_port(start_port=5000, max_attempts=10):
     import socket
