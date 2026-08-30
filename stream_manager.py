@@ -1,6 +1,8 @@
 import cv2
 import os
 import time
+import socket
+import subprocess
 import threading
 import numpy as np
 from datetime import datetime
@@ -154,50 +156,96 @@ class RTSPStreamManager:
 
         return out
 
+    def _get_live_url(self) -> str:
+        """Returns stream2 (substream) for live viewing if available to prevent session collision with NVR recorder."""
+        if "/stream1" in self.rtsp_url:
+            return self.rtsp_url.replace("/stream1", "/stream2")
+        return self.rtsp_url
+
+    def _check_reachable(self, timeout: float = 1.5) -> bool:
+        """Probes RTSP host and port to verify camera is physically online."""
+        try:
+            url = self.rtsp_url
+            if "@" in url:
+                host_part = url.split("@", 1)[1].split("/")[0]
+            else:
+                host_part = url.replace("rtsp://", "").split("/")[0]
+
+            if ":" in host_part:
+                host, port_str = host_part.split(":", 1)
+                port = int(port_str)
+            else:
+                host = host_part
+                port = 554
+
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            res = s.connect_ex((host, port))
+            s.close()
+            return res == 0
+        except Exception:
+            return False
+
     def _capture_loop(self):
-        """Dedicated background loop that constantly fetches RTSP frames."""
+        """Dedicated background loop that fetches RTSP frames using FFmpeg rawvideo pipe with instant auto-reconnect."""
+        width = 854
+        height = 480
+        frame_size = width * height * 3
+
         while not self.stop_event.is_set():
+            # 1. Proactively verify camera socket is open before attempting capture
+            if not self._check_reachable():
+                self.status = "OFFLINE"
+                self.status_message = "Camera offline (unplugged or rebooting)..."
+                time.sleep(2.0)
+                continue
+
             self.status = "CONNECTING"
             self.status_message = f"Connecting via {self.transport.upper()}..."
-            
-            # Configure ffmpeg capture options for OpenCV
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = f"rtsp_transport;{self.transport}|stimeout;5000000|buffer_size;1024000"
-            
-            cap = None
-            try:
-                cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
-                # Lower buffer size to minimize live delay
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-                if not cap.isOpened():
-                    self.status = "ERROR"
-                    self.status_message = "Failed to connect to RTSP stream"
-                    time.sleep(self.reconnect_interval)
-                    continue
+            live_url = self._get_live_url()
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "quiet",
+                "-rtsp_transport", self.transport,
+                "-timeout", "3000000",             # 3-second socket timeout so disconnects immediately abort
+                "-fflags", "+genpts+discardcorrupt",
+                "-i", live_url,
+                "-f", "image2pipe",
+                "-pix_fmt", "bgr24",
+                "-vcodec", "rawvideo",
+                "-s", f"{width}x{height}",
+                "-"
+            ]
+
+            proc = None
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    bufsize=frame_size * 2
+                )
 
                 self.status = "ONLINE"
                 self.status_message = "Live stream active"
-                
-                # Retrieve resolution
-                self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1280
-                self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 720
+                self.width = width
+                self.height = height
 
                 fps_count = 0
                 fps_timer = time.time()
-                consecutive_failures = 0
 
                 while not self.stop_event.is_set():
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        consecutive_failures += 1
-                        if consecutive_failures > 15:
-                            self.status = "RECONNECTING"
-                            self.status_message = "Connection lost. Reconnecting..."
-                            break
-                        time.sleep(0.05)
-                        continue
+                    raw_frame = proc.stdout.read(frame_size)
+                    if len(raw_frame) != frame_size:
+                        print("[StreamManager] Stream disconnected / EOF from camera. Reconnecting...")
+                        self.status = "RECONNECTING"
+                        self.status_message = "Connection lost (camera rebooting). Reconnecting..."
+                        break
 
-                    consecutive_failures = 0
+                    frame = np.frombuffer(raw_frame, dtype=np.uint8).reshape((height, width, 3))
+
                     now = time.time()
                     self.last_frame_time = now
                     fps_count += 1
@@ -207,33 +255,26 @@ class RTSPStreamManager:
                         fps_count = 0
                         fps_timer = now
 
-                    # Process filters
+                    # Process filters (flip, rotate, brightness)
                     processed_frame = self._apply_filters(frame)
 
                     with self.frame_lock:
                         self.current_frame = processed_frame
                         self.frame_count += 1
-                        self.width = processed_frame.shape[1]
-                        self.height = processed_frame.shape[0]
-
-                    # Handle recording
-                    with self.recording_lock:
-                        if self.is_recording and self.recording_writer is not None:
-                            try:
-                                self.recording_writer.write(processed_frame)
-                                self.recording_frames += 1
-                            except Exception as e:
-                                print(f"[StreamManager] Recording error: {e}")
 
             except Exception as e:
                 self.status = "ERROR"
                 self.status_message = f"Stream exception: {str(e)}"
             finally:
-                if cap is not None:
-                    cap.release()
+                if proc is not None:
+                    try:
+                        proc.kill()
+                        proc.wait()
+                    except Exception:
+                        pass
 
             if not self.stop_event.is_set():
-                time.sleep(self.reconnect_interval)
+                time.sleep(1.0)
 
     def get_latest_frame(self):
         """Returns the most recent frame or a generated placeholder."""

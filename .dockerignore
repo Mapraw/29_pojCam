@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+recordings/*.mp4
+recordings/*.avi
+recordings/thumbnails/*.jpg
+snapshots/*.jpg
+*.log
+*.tmp
+run*.bat
+allow_firewall.bat

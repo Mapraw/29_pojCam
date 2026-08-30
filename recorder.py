@@ -1,16 +1,40 @@
 import os
 import sys
 import time
+import socket
 import subprocess
 import threading
 import cv2
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Callable
+from typing import Optional, Dict, Any
 from storage_manager import StorageManager, RECORDINGS_DIR, THUMBNAILS_DIR
 from motion_detector import MotionDetector
 
 SEGMENT_DURATION_SECONDS = 900  # 15 minutes (900 seconds)
+
+def check_camera_reachable(url: str, timeout: float = 2.0) -> bool:
+    """Probes RTSP host and port to verify camera is physically online."""
+    try:
+        if "@" in url:
+            host_part = url.split("@", 1)[1].split("/")[0]
+        else:
+            host_part = url.replace("rtsp://", "").split("/")[0]
+
+        if ":" in host_part:
+            host, port_str = host_part.split(":", 1)
+            port = int(port_str)
+        else:
+            host = host_part
+            port = 554
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        res = s.connect_ex((host, port))
+        s.close()
+        return res == 0
+    except Exception:
+        return False
 
 
 class ContinuousNVRRecorder:
@@ -25,10 +49,15 @@ class ContinuousNVRRecorder:
         self.recorder_thread: Optional[threading.Thread] = None
         self.watcher_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
+        self.split_requested = threading.Event()
 
-        self.current_recording_file = None
-        self.last_segment_end_time = time.time()
-        self.status = "IDLE"  # IDLE, RECORDING, RECONNECTING, ERROR
+        self.status = "IDLE"  # IDLE, RECORDING, RECONNECTING, OFFLINE
+        self.status_message = "Recorder initialized"
+        
+        # Explicit active recording state
+        self.current_recording_filename: Optional[str] = None
+        self.segment_start_time: float = time.time()
+        self.proc_lock = threading.Lock()
 
     def start(self):
         """Starts the background continuous 15-minute chunk recording."""
@@ -36,6 +65,7 @@ class ContinuousNVRRecorder:
             return
         self.is_running = True
         self.stop_event.clear()
+        self.split_requested.clear()
         
         self.recorder_thread = threading.Thread(target=self._recording_loop, daemon=True)
         self.recorder_thread.start()
@@ -48,108 +78,209 @@ class ContinuousNVRRecorder:
         self.is_running = False
         self.stop_event.set()
         
-        if self.ffmpeg_proc is not None:
-            try:
-                # Send 'q' to FFmpeg for clean MP4 container finalization
-                if self.ffmpeg_proc.stdin:
-                    self.ffmpeg_proc.stdin.write(b"q")
-                    self.ffmpeg_proc.stdin.flush()
-                self.ffmpeg_proc.wait(timeout=3)
-            except Exception:
+        with self.proc_lock:
+            if self.ffmpeg_proc is not None:
                 try:
-                    self.ffmpeg_proc.terminate()
+                    if self.ffmpeg_proc.stdin:
+                        self.ffmpeg_proc.stdin.write(b"q")
+                        self.ffmpeg_proc.stdin.flush()
+                    self.ffmpeg_proc.wait(timeout=2)
                 except Exception:
-                    pass
-            self.ffmpeg_proc = None
+                    try:
+                        self.ffmpeg_proc.kill()
+                    except Exception:
+                        pass
+                self.ffmpeg_proc = None
 
         self.status = "IDLE"
+        self.status_message = "Recorder stopped"
+        self.current_recording_filename = None
+
+    def split_segment(self) -> bool:
+        """Finalizes the currently active recording segment immediately and starts a new segment."""
+        if self.is_running:
+            with self.proc_lock:
+                proc = self.ffmpeg_proc
+                if proc is not None and proc.poll() is None:
+                    print("[NVR Recorder] Split requested. Finalizing current clip and advancing to next...")
+                    try:
+                        if proc.stdin:
+                            proc.stdin.write(b"q")
+                            proc.stdin.flush()
+                        proc.wait(timeout=2)
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                    self.split_requested.set()
+                    return True
+        return False
 
     def restart(self, new_url: Optional[str] = None):
         """Restarts recorder with same or updated RTSP URL."""
         if new_url:
             self.rtsp_url = new_url
         self.stop()
-        time.sleep(1.0)
+        time.sleep(0.5)
         self.start()
 
-    def _build_ffmpeg_cmd(self) -> list:
+    def get_active_recording_info(self) -> Optional[Dict[str, Any]]:
+        """Returns details of the segment currently being recorded."""
+        if self.status != "RECORDING" or not self.current_recording_filename:
+            return None
+        
+        filepath = RECORDINGS_DIR / self.current_recording_filename
+        size_bytes = filepath.stat().st_size if filepath.exists() else 0
+        elapsed = int(max(0, time.time() - (self.segment_start_time or time.time())))
+        
+        return {
+            "filename": self.current_recording_filename,
+            "size_mb": round(size_bytes / (1024 * 1024), 2),
+            "elapsed_seconds": elapsed,
+            "elapsed_formatted": f"{elapsed//60:02d}:{elapsed%60:02d}",
+            "is_recording": True
+        }
+
+    def _build_ffmpeg_cmd(self, output_filename: str) -> list:
         """
-        Builds high-performance FFmpeg command for Raspberry Pi:
-        - Uses RTSP TCP transport for reliability.
-        - Direct video stream copy (-c:v copy) -> < 1% CPU usage!
-        - Audio copy (-c:a aac or copy) for full audio support.
-        - Segment muxer chunks into exactly 15-minute files (900s).
-        - Fragmented MP4 flags for corruption resistance & instant web streaming.
+        Builds robust FFmpeg command with explicit single-clip duration (15 min):
+        - Direct video copy (-c:v copy) -> <1% CPU on Raspberry Pi.
+        - Audio AAC encoding (-c:a aac).
+        - -t 900 records exactly 15 minutes per file.
+        - -movflags +faststart flushes moov atom cleanly on completion.
         """
-        output_pattern = str(RECORDINGS_DIR / "clip_%Y%m%d_%H%M%S.mp4")
+        output_path = str(RECORDINGS_DIR / output_filename)
 
         cmd = [
             "ffmpeg",
             "-hide_banner",
             "-loglevel", "warning",
             "-rtsp_transport", "tcp",
+            "-timeout", "5000000",             # 5-second socket I/O timeout (microseconds)
             "-fflags", "+genpts+discardcorrupt",
             "-i", self.rtsp_url,
-            "-c:v", "copy",                  # Direct Stream Copy (Zero CPU encoding)
-            "-c:a", "aac",                   # Remux/encode audio stream to standard AAC
+            "-t", str(self.segment_duration),  # Record 15-min segment
+            "-c:v", "copy",                     # Direct Stream Copy (Zero CPU encoding)
+            "-c:a", "aac",                      # Remux/encode audio stream to standard AAC
             "-b:a", "64k",
-            "-f", "segment",
-            "-segment_time", str(self.segment_duration),
-            "-reset_timestamps", "1",
-            "-strftime", "1",
             "-movflags", "+faststart",
-            output_pattern
+            output_path
         ]
         return cmd
 
     def _recording_loop(self):
-        """Supervisor loop that keeps FFmpeg recording 24/7 with auto-reconnect."""
+        """Supervisor loop that records consecutive 15-minute segments 24/7 with auto-reconnect."""
         while not self.stop_event.is_set():
-            cmd = self._build_ffmpeg_cmd()
-            self.status = "RECORDING"
-            print(f"[NVR Recorder] Starting 15-min segmented recording from {self.rtsp_url}...")
+            # 1. Proactive Probe: Wait until camera is physically reachable
+            if not check_camera_reachable(self.rtsp_url, timeout=2.0):
+                self.status = "OFFLINE"
+                self.status_message = "Camera offline / unplugged. Waiting for camera to boot..."
+                self.current_recording_filename = None
+                time.sleep(2.5)
+                continue
 
+            # 2. Generate new timestamped filename for this specific 15-min segment
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"clip_{timestamp}.mp4"
+            self.current_recording_filename = output_filename
+            self.segment_start_time = time.time()
+            self.split_requested.clear()
+
+            cmd = self._build_ffmpeg_cmd(output_filename)
+            self.status = "RECORDING"
+            self.status_message = f"Recording {output_filename}"
+            print(f"[NVR Recorder] Camera online! Starting new segment: {output_filename}...")
+
+            proc = None
             try:
-                self.ffmpeg_proc = subprocess.Popen(
+                proc = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
+                with self.proc_lock:
+                    self.ffmpeg_proc = proc
 
-                # Wait for process to exit or stop event
+                stall_counter = 0
+                last_size = -1
+
+                # 3. Active Watchdog: Monitor process health and file growth
                 while not self.stop_event.is_set():
-                    poll_code = self.ffmpeg_proc.poll()
+                    poll_code = proc.poll()
                     if poll_code is not None:
-                        print(f"[NVR Recorder] FFmpeg process exited with return code {poll_code}.")
+                        print(f"[NVR Recorder] Segment {output_filename} finished (code {poll_code}). Auto-starting next segment...")
                         break
-                    time.sleep(1.0)
+
+                    time.sleep(1.5)
+
+                    # Check if active file is growing
+                    filepath = RECORDINGS_DIR / output_filename
+                    if filepath.exists():
+                        current_size = filepath.stat().st_size
+                        elapsed = time.time() - self.segment_start_time
+                        if current_size == last_size and elapsed > 20:
+                            stall_counter += 1
+                            if stall_counter >= 6:  # Stalled for >20 seconds
+                                print(f"[NVR Recorder] Stream stalled on {output_filename}. Restarting recorder...")
+                                try:
+                                    proc.kill()
+                                except Exception:
+                                    pass
+                                break
+                        else:
+                            stall_counter = 0
+                            last_size = current_size
 
             except Exception as e:
-                print(f"[NVR Recorder] Error launching FFmpeg: {e}")
+                print(f"[NVR Recorder] Error running FFmpeg on {output_filename}: {e}")
+
+            # Ensure process is closed
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+            with self.proc_lock:
+                self.ffmpeg_proc = None
+
+            # Generate thumbnail or cleanup if empty
+            completed_file = RECORDINGS_DIR / output_filename
+            if completed_file.exists():
+                if completed_file.stat().st_size > 50000:
+                    thumb_file = THUMBNAILS_DIR / f"{completed_file.stem}.jpg"
+                    self._generate_thumbnail(completed_file, thumb_file)
+                else:
+                    # Clean up empty or broken 0-byte clip
+                    try:
+                        completed_file.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
             if not self.stop_event.is_set():
                 self.status = "RECONNECTING"
-                print("[NVR Recorder] Reconnecting in 3 seconds...")
-                time.sleep(3.0)
+                # If exited with error, wait 2.5s backoff to let camera RTSP session clear
+                backoff = 2.5 if (proc is None or proc.poll() != 0) else 0.5
+                self.status_message = "Preparing next recording segment..."
+                time.sleep(backoff)
 
     def _storage_and_thumbnail_watcher(self):
         """
         Background maintenance thread:
         1. Generates thumbnails for any completed MP4 clips.
         2. Enforces the 4.0 GB FIFO storage cap.
-        3. Scans for motion metadata updates.
         """
-        known_thumbnails = set()
-
         while not self.stop_event.is_set():
             try:
-                # 1. Generate thumbnails for completed video clips (skip actively written file)
+                # 1. Generate thumbnails for completed video clips
                 video_clips = list(RECORDINGS_DIR.glob("*.mp4"))
-                now_ts = time.time()
+                active_name = self.current_recording_filename
+
                 for clip in video_clips:
-                    # Skip the currently recording active segment (modified in last 15s)
-                    if (now_ts - clip.stat().st_mtime) < 15.0:
+                    # Skip active file
+                    if active_name and clip.name == active_name:
                         continue
 
                     thumb_path = THUMBNAILS_DIR / f"{clip.stem}.jpg"
@@ -164,14 +295,13 @@ class ContinuousNVRRecorder:
             except Exception as e:
                 print(f"[NVR Recorder] Watcher error: {e}")
 
-            time.sleep(10.0)  # Check every 10 seconds
+            time.sleep(10.0)
 
     def _generate_thumbnail(self, video_path: Path, thumb_path: Path):
-        """Extracts a lightweight JPG thumbnail from video segment using OpenCV or FFmpeg."""
+        """Extracts a lightweight JPG thumbnail from video segment using OpenCV."""
         try:
             cap = cv2.VideoCapture(str(video_path))
             if cap.isOpened():
-                # Read 1st second frame
                 cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
                 ret, frame = cap.read()
                 if not ret:
@@ -179,7 +309,6 @@ class ContinuousNVRRecorder:
                     ret, frame = cap.read()
 
                 if ret and frame is not None:
-                    # Downscale to 400x225 for mobile web card thumbnail
                     thumb = cv2.resize(frame, (400, 225), interpolation=cv2.INTER_AREA)
                     cv2.imwrite(str(thumb_path), thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 cap.release()

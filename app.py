@@ -67,14 +67,25 @@ def api_clips():
     """Lists all 15-minute video clips with metadata, thumbnails, lock status, and motion flags."""
     clips = []
     video_files = list(RECORDINGS_DIR.glob("*.mp4")) + list(RECORDINGS_DIR.glob("*.mkv"))
-    # Sort newest first
     video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    active_clip = nvr_recorder.get_active_recording_info()
+    active_filename = active_clip["filename"] if active_clip else None
 
     for vf in video_files:
         filename = vf.name
-        meta = storage_mgr.get_clip_meta(filename)
-        size_mb = round(vf.stat().st_size / (1024 * 1024), 2)
+        # Skip the active recording file from completed list
+        if active_filename and filename == active_filename:
+            continue
+
+        size_bytes = vf.stat().st_size
+        # Skip empty or 0-byte files
+        if size_bytes < 1000:
+            continue
+
         mtime = vf.stat().st_mtime
+        size_mb = round(size_bytes / (1024 * 1024), 2)
+        meta = storage_mgr.get_clip_meta(filename)
         time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
         date_group = time.strftime("%Y-%m-%d", time.localtime(mtime))
 
@@ -94,7 +105,18 @@ def api_clips():
             "motion_timestamps": meta.get("motion_timestamps", [])
         })
 
-    return jsonify({"clips": clips, "storage": storage_mgr.get_storage_info()})
+    return jsonify({
+        "clips": clips,
+        "active_clip": active_clip,
+        "storage": storage_mgr.get_storage_info(),
+        "nvr_status": nvr_recorder.status
+    })
+
+@app.route('/api/record/split', methods=['POST'])
+def api_record_split():
+    """Finalizes the currently active recording segment into a completed clip and starts next."""
+    success = nvr_recorder.split_segment()
+    return jsonify({"success": success, "message": "Clip finalized and saved to archive!"})
 
 @app.route('/api/clips/<path:filename>')
 def serve_video_stream(filename):
