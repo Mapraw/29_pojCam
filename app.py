@@ -74,6 +74,7 @@ def api_system():
 def api_clips():
     """Lists all 15-minute video clips with metadata, thumbnails, lock status, and motion flags."""
     clips = []
+    now_ts = time.time()
     video_files = list(RECORDINGS_DIR.glob("*.mp4")) + list(RECORDINGS_DIR.glob("*.mkv"))
     video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -98,7 +99,19 @@ def api_clips():
         date_group = time.strftime("%Y-%m-%d", time.localtime(mtime))
 
         thumb_file = f"{vf.stem}.jpg"
-        has_thumb = (THUMBNAILS_DIR / thumb_file).exists()
+        thumb_path = THUMBNAILS_DIR / thumb_file
+        has_thumb = thumb_path.exists()
+
+        if not has_thumb and size_bytes > 30000:
+            has_thumb = nvr_recorder._generate_thumbnail(vf, thumb_path)
+
+        # If file is not actively being written and thumbnail cannot be generated, it's corrupted -> clean it up
+        if not has_thumb and (now_ts - mtime) > 30.0:
+            try:
+                vf.unlink(missing_ok=True)
+            except Exception:
+                pass
+            continue
 
         clips.append({
             "filename": filename,

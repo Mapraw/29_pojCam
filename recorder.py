@@ -93,7 +93,7 @@ class ContinuousNVRRecorder:
                     if self.ffmpeg_proc.stdin:
                         self.ffmpeg_proc.stdin.write(b"q")
                         self.ffmpeg_proc.stdin.flush()
-                    self.ffmpeg_proc.wait(timeout=2)
+                    self.ffmpeg_proc.wait(timeout=3)
                 except Exception:
                     try:
                         self.ffmpeg_proc.kill()
@@ -111,12 +111,12 @@ class ContinuousNVRRecorder:
             with self.proc_lock:
                 proc = self.ffmpeg_proc
                 if proc is not None and proc.poll() is None:
-                    print("[NVR Recorder] Split requested. Finalizing current clip and advancing to next...")
+                    print("[NVR Recorder] Split requested. Gracefully finalizing current clip with 'q' signal...")
                     try:
                         if proc.stdin:
                             proc.stdin.write(b"q")
                             proc.stdin.flush()
-                        proc.wait(timeout=2)
+                        proc.wait(timeout=3)
                     except Exception:
                         try:
                             proc.kill()
@@ -174,6 +174,7 @@ class ContinuousNVRRecorder:
                 "-i", input_url,
                 "-t", str(self.segment_duration),
                 "-vf", "scale=854:480,fps=10",
+                "-g", "20",                          # Force keyframe every 2 seconds for clean segment finalization
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-b:v", "220k",
@@ -196,6 +197,7 @@ class ContinuousNVRRecorder:
                 "-i", input_url,
                 "-t", str(self.segment_duration),
                 "-vf", "scale=640:360,fps=10",
+                "-g", "20",
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-b:v", "150k",
@@ -284,7 +286,8 @@ class ContinuousNVRRecorder:
                 while not self.stop_event.is_set():
                     poll_code = proc.poll()
                     if poll_code is not None:
-                        print(f"[NVR Recorder] Segment {output_filename} finished (code {poll_code}). Auto-starting next segment...")
+                        # Process exited on its own (natural 15-minute completion)
+                        print(f"[NVR Recorder] Segment {output_filename} completed cleanly (code {poll_code}). Auto-advancing to next segment...")
                         break
 
                     time.sleep(1.5)
@@ -294,9 +297,18 @@ class ContinuousNVRRecorder:
                     if filepath.exists():
                         current_size = filepath.stat().st_size
                         elapsed = time.time() - self.segment_start_time
-                        if current_size == last_size and elapsed > 20:
+
+                        # Check if 15 minutes reached -> Gracefully send 'q' to finalize
+                        if elapsed >= self.segment_duration and proc.stdin:
+                            try:
+                                proc.stdin.write(b"q")
+                                proc.stdin.flush()
+                            except Exception:
+                                pass
+
+                        if current_size == last_size and elapsed > 25:
                             stall_counter += 1
-                            if stall_counter >= 6:  # Stalled for >20 seconds
+                            if stall_counter >= 6:  # Stalled for >25 seconds
                                 print(f"[NVR Recorder] Stream stalled on {output_filename}. Restarting recorder...")
                                 try:
                                     proc.kill()
@@ -310,20 +322,26 @@ class ContinuousNVRRecorder:
             except Exception as e:
                 print(f"[NVR Recorder] Error running FFmpeg on {output_filename}: {e}")
 
-            # Ensure process is closed
+            # Ensure clean wait for FFmpeg to finish writing moov atom
             if proc is not None:
                 try:
-                    proc.kill()
+                    proc.wait(timeout=3)
                 except Exception:
-                    pass
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
             with self.proc_lock:
                 self.ffmpeg_proc = None
 
-            # Generate thumbnail or cleanup if empty
+            # Small delay to let filesystem settle
+            time.sleep(0.2)
+
+            # Generate thumbnail or cleanup if empty/corrupted
             completed_file = RECORDINGS_DIR / output_filename
             if completed_file.exists():
-                if completed_file.stat().st_size > 50000:
+                if completed_file.stat().st_size > 30000:
                     thumb_file = THUMBNAILS_DIR / f"{completed_file.stem}.jpg"
                     self._generate_thumbnail(completed_file, thumb_file)
                 else:
@@ -334,8 +352,8 @@ class ContinuousNVRRecorder:
 
             if not self.stop_event.is_set():
                 self.status = "RECONNECTING"
-                backoff = 2.5 if (proc is None or proc.poll() != 0) else 0.5
-                self.status_message = "Preparing next recording segment..."
+                backoff = 2.0 if (proc is None or proc.poll() != 0) else 0.2
+                self.status_message = "Starting next recording segment..."
                 time.sleep(backoff)
 
     def _storage_and_thumbnail_watcher(self):
@@ -355,7 +373,7 @@ class ContinuousNVRRecorder:
                         continue
 
                     thumb_path = THUMBNAILS_DIR / f"{clip.stem}.jpg"
-                    if not thumb_path.exists() and clip.stat().st_size > 10000:
+                    if not thumb_path.exists() and clip.stat().st_size > 30000:
                         self._generate_thumbnail(clip, thumb_path)
 
                 # 2. Enforce storage limit
@@ -368,20 +386,29 @@ class ContinuousNVRRecorder:
 
             time.sleep(10.0)
 
-    def _generate_thumbnail(self, video_path: Path, thumb_path: Path):
+    def _generate_thumbnail(self, video_path: Path, thumb_path: Path) -> bool:
         """Extracts a lightweight JPG thumbnail from video segment using OpenCV."""
         try:
             cap = cv2.VideoCapture(str(video_path))
-            if cap.isOpened():
-                cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
-                ret, frame = cap.read()
-                if not ret:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    ret, frame = cap.read()
-
-                if ret and frame is not None:
-                    thumb = cv2.resize(frame, (400, 225), interpolation=cv2.INTER_AREA)
-                    cv2.imwrite(str(thumb_path), thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if not cap.isOpened():
                 cap.release()
+                print(f"[NVR Recorder] Warning: Video file {video_path.name} cannot be opened by OpenCV.")
+                return False
+
+            cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
+            ret, frame = cap.read()
+            if not ret:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+
+            if ret and frame is not None:
+                thumb = cv2.resize(frame, (400, 225), interpolation=cv2.INTER_AREA)
+                cv2.imwrite(str(thumb_path), thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                cap.release()
+                return True
+            
+            cap.release()
+            return False
         except Exception as e:
             print(f"[NVR Recorder] Thumbnail creation error for {video_path.name}: {e}")
+            return False
