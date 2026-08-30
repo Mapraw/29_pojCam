@@ -2,7 +2,7 @@ import os
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 RECORDINGS_DIR = BASE_DIR / "recordings"
@@ -125,12 +125,12 @@ class StorageManager:
         """Gets metadata for a specific clip."""
         return self.metadata.get(filename, {})
 
-    def cleanup_if_needed(self) -> Tuple[int, List[str]]:
+    def cleanup_if_needed(self, active_filename: Optional[str] = None) -> Tuple[int, List[str]]:
         """
         FIFO Circular Buffer:
-        Checks if total disk usage exceeds soft limit (e.g. 3.68 GB).
+        Checks if total disk usage exceeds soft limit (e.g. 7.52 GB of 8.0 GB).
         If exceeded, deletes the oldest unlocked video clips and their thumbnails
-        until total size drops below target purge size (e.g. 3.2 GB).
+        until total size drops below target purge size (e.g. 6.56 GB).
         Returns: (bytes_freed, list_of_deleted_filenames)
         """
         used_bytes = self.get_total_used_bytes()
@@ -148,6 +148,10 @@ class StorageManager:
 
         for video_path in video_files:
             filename = video_path.name
+
+            # Skip active in-progress recording file
+            if active_filename and filename == active_filename:
+                continue
 
             # Skip locked clips
             if self.is_locked(filename):

@@ -209,7 +209,7 @@ class RTSPStreamManager:
                 "-hide_banner",
                 "-loglevel", "quiet",
                 "-rtsp_transport", self.transport,
-                "-timeout", "3000000",             # 3-second socket timeout so disconnects immediately abort
+                "-timeout", "10000000",             # 10-second socket timeout
                 "-fflags", "+genpts+discardcorrupt",
                 "-i", live_url,
                 "-f", "image2pipe",
@@ -269,7 +269,7 @@ class RTSPStreamManager:
                 if proc is not None:
                     try:
                         proc.kill()
-                        proc.wait()
+                        proc.wait(timeout=2)
                     except Exception:
                         pass
 
@@ -279,7 +279,7 @@ class RTSPStreamManager:
     def get_latest_frame(self):
         """Returns the most recent frame or a generated placeholder."""
         with self.frame_lock:
-            if self.current_frame is not None and (time.time() - self.last_frame_time) < 3.0:
+            if self.current_frame is not None and (time.time() - self.last_frame_time) < 5.0:
                 return self.current_frame.copy()
             
         return self._generate_placeholder()

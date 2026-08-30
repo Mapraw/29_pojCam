@@ -102,16 +102,8 @@ def api_clips():
         thumb_path = THUMBNAILS_DIR / thumb_file
         has_thumb = thumb_path.exists()
 
-        if not has_thumb and size_bytes > 30000:
+        if not has_thumb and size_bytes > 2000:
             has_thumb = nvr_recorder._generate_thumbnail(vf, thumb_path)
-
-        # If file is not actively being written and thumbnail cannot be generated, it's corrupted -> clean it up
-        if not has_thumb and (now_ts - mtime) > 30.0:
-            try:
-                vf.unlink(missing_ok=True)
-            except Exception:
-                pass
-            continue
 
         clips.append({
             "filename": filename,
