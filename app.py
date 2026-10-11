@@ -7,6 +7,7 @@ import threading
 import webbrowser
 import cv2
 from pathlib import Path
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 # Force UTF-8 encoding on Windows to prevent UnicodeEncodeError on cp874/cp1252 consoles
@@ -301,11 +302,17 @@ def detect_camera_for_clip(filename: str) -> str:
 
 @app.route('/api/clips')
 def api_clips():
-    """Lists video clips with camera tagging and optional ?camera=<camera_id> filter."""
+    """Lists video clips with camera tagging and optional ?camera=..., ?date=..., ?start_time=..., ?end_time=..., ?motion=... filters."""
     cam_filter = request.args.get('camera', 'all').strip()
+    date_filter = request.args.get('date', '').strip()
+    start_time_filter = request.args.get('start_time', '').strip()
+    end_time_filter = request.args.get('end_time', '').strip()
+    motion_filter = request.args.get('motion', '').strip().lower() in ('1', 'true', 'yes')
     name_map = get_camera_name_map()
 
     clips = []
+    available_dates_set = set()
+    date_counts = {}
     video_files = list(RECORDINGS_DIR.glob("*.mp4")) + list(RECORDINGS_DIR.glob("*.mkv"))
     video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -334,11 +341,50 @@ def api_clips():
         if cam_filter != 'all' and clip_cam_id != cam_filter:
             continue
 
-        mtime = vf.stat().st_mtime
         size_mb = round(size_bytes / (1024 * 1024), 2)
         meta = storage_mgr.get_clip_meta(filename)
-        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
-        date_group = time.strftime("%Y-%m-%d", time.localtime(mtime))
+
+        # Extract precise recording start timestamp from filename (camX_YYYYMMDD_HHMMSS or clip_YYYYMMDD_HHMMSS)
+        match = re.search(r'(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})', filename)
+        if match:
+            y, mo, d, h, mn, s = map(int, match.groups())
+            clip_dt = datetime(y, mo, d, h, mn, s)
+            time_str = clip_dt.strftime("%Y-%m-%d %H:%M:%S")
+            date_group = clip_dt.strftime("%Y-%m-%d")
+            time_part = clip_dt.strftime("%H:%M:%S")
+            epoch_val = int(clip_dt.timestamp())
+        else:
+            mtime = vf.stat().st_mtime
+            clip_dt = datetime.fromtimestamp(mtime)
+            time_str = clip_dt.strftime("%Y-%m-%d %H:%M:%S")
+            date_group = clip_dt.strftime("%Y-%m-%d")
+            time_part = clip_dt.strftime("%H:%M:%S")
+            epoch_val = int(mtime)
+
+        # Record available dates for search UI
+        available_dates_set.add(date_group)
+        date_counts[date_group] = date_counts.get(date_group, 0) + 1
+
+        # Apply date filter if requested
+        if date_filter and date_filter != 'all':
+            if date_filter == 'today':
+                target_date = datetime.now().strftime("%Y-%m-%d")
+            elif date_filter == 'yesterday':
+                target_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                target_date = date_filter
+            if date_group != target_date:
+                continue
+
+        # Apply time range filter if requested
+        if start_time_filter and time_part < start_time_filter:
+            continue
+        if end_time_filter and time_part > end_time_filter:
+            continue
+
+        # Apply motion filter if requested
+        if motion_filter and not meta.get("has_motion", False):
+            continue
 
         thumb_file = f"{vf.stem}.jpg"
         thumb_path = THUMBNAILS_DIR / thumb_file
@@ -358,6 +404,8 @@ def api_clips():
             "size_mb": size_mb,
             "timestamp": time_str,
             "date_group": date_group,
+            "time_part": time_part,
+            "epoch": epoch_val,
             "thumbnail_url": f"/api/thumbnails/{thumb_file}" if has_thumb else "/static/placeholder_thumb.jpg",
             "video_url": f"/api/clips/{filename}",
             "locked": meta.get("locked", False),
@@ -366,8 +414,13 @@ def api_clips():
             "motion_timestamps": meta.get("motion_timestamps", [])
         })
 
+    # Sort available dates descending (newest date first)
+    sorted_dates = sorted(list(available_dates_set), reverse=True)
+
     return jsonify({
         "clips": clips,
+        "available_dates": sorted_dates,
+        "date_counts": date_counts,
         "active_clips": active_clips,
         "storage": storage_mgr.get_storage_info(),
         "camera_filter": cam_filter

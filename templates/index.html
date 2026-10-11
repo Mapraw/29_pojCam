@@ -34,6 +34,13 @@
       --radius-sm: 8px;
     }
 
+    html, body {
+      max-width: 100vw;
+      width: 100%;
+      overflow-x: hidden;
+      position: relative;
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -61,7 +68,7 @@
     header {
       background-color: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
-      padding: 12px 20px;
+      padding: 10px 18px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -69,6 +76,10 @@
       top: 0;
       z-index: 40;
       backdrop-filter: blur(12px);
+      max-width: 100vw;
+      width: 100%;
+      box-sizing: border-box;
+      gap: 8px;
     }
 
     .brand {
@@ -76,6 +87,7 @@
       align-items: center;
       gap: 12px;
       cursor: pointer;
+      min-width: 0;
     }
 
     .brand-icon {
@@ -88,12 +100,21 @@
       justify-content: center;
       font-size: 20px;
       box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      min-width: 0;
+      overflow: hidden;
     }
 
     .brand-text h1 {
       font-size: 1.05rem;
       font-weight: 700;
       letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .brand-text p {
@@ -147,7 +168,9 @@
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
+      flex-shrink: 0;
+      min-width: 0;
     }
 
     .camera-switcher-select {
@@ -160,6 +183,10 @@
       font-weight: 600;
       cursor: pointer;
       outline: none;
+      max-width: 170px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
     .status-pill {
@@ -172,6 +199,14 @@
       border-radius: 999px;
       font-size: 0.75rem;
       font-weight: 700;
+      flex-shrink: 0;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .status-pill:hover {
+      background-color: rgba(255, 255, 255, 0.08);
     }
 
     .status-dot {
@@ -179,10 +214,92 @@
       height: 8px;
       border-radius: 50%;
       background-color: var(--accent-amber);
+      flex-shrink: 0;
     }
 
     .status-dot.ONLINE { background-color: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); }
     .status-dot.ERROR, .status-dot.OFFLINE { background-color: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+
+    /* Mobile Responsive Header Styles: Prevents width overflow on phones */
+    @media (max-width: 768px) {
+      header {
+        padding: 8px 12px;
+        gap: 8px;
+      }
+
+      .brand {
+        gap: 8px;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      .brand-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+        border-radius: var(--radius-sm);
+      }
+
+      .brand-text h1 {
+        font-size: 0.88rem;
+      }
+
+      .brand-text p {
+        display: none; /* Hide subtitle to preserve phone width */
+      }
+
+      .header-actions {
+        gap: 6px;
+      }
+
+      .camera-switcher-select {
+        max-width: 105px;
+        padding: 5px 6px;
+        font-size: 0.72rem;
+      }
+
+      .status-pill {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+        gap: 5px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      header {
+        padding: 6px 10px;
+      }
+
+      .brand-text h1 {
+        font-size: 0.8rem;
+        max-width: 105px;
+      }
+
+      .camera-switcher-select {
+        max-width: 88px;
+        font-size: 0.7rem;
+        padding: 4px 5px;
+      }
+
+      /* Compact rightest top status pill on phone screens:
+         Avoids wide text that causes phone page horizontal overflow */
+      .status-pill {
+        padding: 5px;
+        border-radius: 999px;
+        min-width: 28px;
+        height: 28px;
+        justify-content: center;
+      }
+
+      .status-pill #live-status-text {
+        display: none; /* Icon-only on phone; tap shows status toast */
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+      }
+    }
 
     /* Mobile Bottom Navigation */
     .mobile-bottom-bar {
@@ -627,6 +744,378 @@
       border-color: transparent;
     }
 
+    /* --- ARCHIVE PERIOD & TIME SEARCH SUITE --- */
+    .archive-period-panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .filter-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    @media (min-width: 900px) {
+      .filter-row {
+        flex-direction: row;
+        align-items: center;
+        gap: 14px;
+      }
+    }
+
+    .filter-row-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 170px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .filter-label-icon {
+      font-size: 1rem;
+    }
+
+    .filter-controls-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .period-preset-chips, .time-slot-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .preset-chip, .slot-chip {
+      padding: 5px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .preset-chip:hover, .slot-chip:hover {
+      background: var(--bg-card-hover);
+      color: var(--text-main);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .preset-chip.active, .slot-chip.active {
+      background: var(--accent-blue);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+    }
+
+    .date-pickers-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .date-dropdown {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      min-width: 150px;
+      max-width: 230px;
+    }
+
+    .custom-date-box {
+      display: inline-flex;
+    }
+
+    .custom-date-input, .time-input {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 5px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.74rem;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .custom-date-input::-webkit-calendar-picker-indicator,
+    .time-input::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+    }
+
+    .time-range-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+    }
+
+    .time-input-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .btn-clear-inline {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .btn-clear-inline:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .filter-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 10px;
+    }
+
+    .search-box-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 220px;
+      max-width: 420px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 30px 6px 30px;
+      border-radius: var(--radius-sm);
+      font-size: 0.76rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--border-focus);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .clear-search-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 2px 6px;
+    }
+
+    .filter-toggles-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-toggle-btn {
+      padding: 5px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .filter-toggle-btn:hover {
+      background: var(--bg-card-hover);
+      color: var(--text-main);
+    }
+
+    .filter-toggle-btn.active {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: var(--accent-red);
+      color: #fca5a5;
+    }
+
+    .filter-reset-btn {
+      padding: 5px 12px;
+      font-size: 0.74rem;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+
+    .filter-reset-btn:hover {
+      background: var(--bg-card);
+      color: var(--text-main);
+    }
+
+    .filter-summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.74rem;
+    }
+
+    .summary-count {
+      color: var(--text-muted);
+    }
+
+    .summary-count strong {
+      color: var(--accent-blue);
+      font-size: 0.85rem;
+    }
+
+    .summary-total-hint {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+
+    .active-badge-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .filter-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(59, 130, 246, 0.18);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+    }
+
+    .filter-badge-remove {
+      cursor: pointer;
+      font-size: 0.68rem;
+      margin-left: 2px;
+      opacity: 0.75;
+    }
+
+    .filter-badge-remove:hover {
+      opacity: 1;
+      color: #fff;
+    }
+
+    /* Date Group Separator in Grid */
+    .date-group-header {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: linear-gradient(90deg, rgba(23, 32, 51, 0.95), rgba(17, 23, 38, 0.7));
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--accent-blue);
+      border-radius: var(--radius-md);
+      margin-top: 10px;
+      margin-bottom: 2px;
+    }
+
+    .date-group-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .date-group-count {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    @media (max-width: 600px) {
+      .archive-period-panel {
+        padding: 12px;
+        gap: 10px;
+      }
+
+      .search-box-wrap {
+        min-width: 100%;
+        max-width: 100%;
+      }
+
+      .filter-toggles-wrap {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .clips-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .clips-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1019,7 +1508,7 @@
         <!-- Populated via JS -->
       </select>
 
-      <div class="status-pill">
+      <div class="status-pill" id="header-status-pill" onclick="showStatusToast()" title="System Status: Ready">
         <div class="status-dot" id="live-dot"></div>
         <span id="live-status-text">SYSTEM READY</span>
       </div>
@@ -1128,6 +1617,106 @@
       <!-- Camera Filter Pills -->
       <div class="archive-filters" id="archive-filter-pills">
         <button class="filter-pill active" onclick="setArchiveFilter('all')">All Cameras</button>
+      </div>
+
+      <!-- Historical Period & Time Search Suite -->
+      <div class="archive-period-panel">
+        
+        <!-- Row 1: Date Period Selection -->
+        <div class="filter-row">
+          <div class="filter-row-header">
+            <span class="filter-label-icon">📅</span>
+            <span class="filter-label-text">Select Date / Period:</span>
+          </div>
+
+          <div class="filter-controls-group">
+            <!-- Quick Date Period Presets -->
+            <div class="period-preset-chips" id="period-preset-chips">
+              <button type="button" class="preset-chip active" data-period="all" onclick="setPeriodPreset('all')">🌟 All Time</button>
+              <button type="button" class="preset-chip" data-period="today" onclick="setPeriodPreset('today')">📅 Today</button>
+              <button type="button" class="preset-chip" data-period="yesterday" onclick="setPeriodPreset('yesterday')">⏪ Yesterday</button>
+              <button type="button" class="preset-chip" data-period="24h" onclick="setPeriodPreset('24h')">🕒 Last 24 Hours</button>
+              <button type="button" class="preset-chip" data-period="7d" onclick="setPeriodPreset('7d')">🗓️ Last 7 Days</button>
+            </div>
+
+            <!-- Specific Date Pickers -->
+            <div class="date-pickers-wrap">
+              <select id="archive-date-dropdown" class="form-control date-dropdown" onchange="onDateDropdownSelect(this.value)" title="Choose a recorded date">
+                <option value="all">📅 All Recorded Dates</option>
+              </select>
+              
+              <div class="custom-date-box" title="Select custom calendar date">
+                <input type="date" id="archive-date-picker" class="form-control custom-date-input" onchange="onCustomDatePicker(this.value)">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Time of Day Slots & Custom Time Range -->
+        <div class="filter-row">
+          <div class="filter-row-header">
+            <span class="filter-label-icon">⏱️</span>
+            <span class="filter-label-text">Time Slot / Range:</span>
+          </div>
+
+          <div class="filter-controls-group">
+            <!-- Time Slot Presets -->
+            <div class="time-slot-chips" id="time-slot-chips">
+              <button type="button" class="slot-chip active" data-slot="all" onclick="setTimeSlot('all')">All Day (00-24)</button>
+              <button type="button" class="slot-chip" data-slot="morning" onclick="setTimeSlot('morning')">🌅 Morning (06:00 - 12:00)</button>
+              <button type="button" class="slot-chip" data-slot="afternoon" onclick="setTimeSlot('afternoon')">☀️ Afternoon (12:00 - 18:00)</button>
+              <button type="button" class="slot-chip" data-slot="evening" onclick="setTimeSlot('evening')">🌙 Evening (18:00 - 24:00)</button>
+              <button type="button" class="slot-chip" data-slot="night" onclick="setTimeSlot('night')">🦉 Night (00:00 - 06:00)</button>
+            </div>
+
+            <!-- Custom Exact Time Range -->
+            <div class="time-range-wrap">
+              <div class="time-input-group">
+                <label for="archive-time-start">From:</label>
+                <input type="time" id="archive-time-start" class="form-control time-input" onchange="onCustomTimeRangeChange()" step="300">
+              </div>
+              <div class="time-input-group">
+                <label for="archive-time-end">To:</label>
+                <input type="time" id="archive-time-end" class="form-control time-input" onchange="onCustomTimeRangeChange()" step="300">
+              </div>
+              <button type="button" class="btn-clear-inline" id="btn-clear-time" onclick="clearTimeRange()" style="display:none;" title="Clear time range">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Keyword Search, Motion Only & Reset Actions -->
+        <div class="filter-row filter-row-actions">
+          <div class="search-box-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="archive-search-box" class="form-control search-input" placeholder="Search clip time (e.g. 15:28), date, camera..." oninput="onSearchInput(this.value)">
+            <button type="button" class="clear-search-btn" id="btn-clear-search" onclick="clearSearchText()" style="display:none;">✕</button>
+          </div>
+
+          <div class="filter-toggles-wrap">
+            <button type="button" class="filter-toggle-btn" id="btn-filter-motion" onclick="toggleMotionFilter()">
+              🔥 Motion Only
+            </button>
+            <button type="button" class="filter-toggle-btn" id="btn-sort-toggle" onclick="toggleClipSort()">
+              <span id="sort-icon">⬇️</span> <span id="sort-text">Newest First</span>
+            </button>
+            <button type="button" class="btn filter-reset-btn" id="btn-reset-all" onclick="resetAllFilters()">
+              🔄 Reset Filters
+            </button>
+          </div>
+        </div>
+
+        <!-- Row 4: Summary Count & Active Filter Tags -->
+        <div class="filter-summary-row" id="filter-summary-bar">
+          <div class="summary-count">
+            Showing <strong id="summary-filtered-count">0</strong> clips
+            <span class="summary-total-hint" id="summary-total-hint">(out of 0)</span>
+          </div>
+
+          <div class="active-badge-list" id="active-filter-badges">
+            <!-- Dynamically injected badges e.g. [Date: Today ✕] [Afternoon ✕] [Motion ✕] -->
+          </div>
+        </div>
+
       </div>
 
       <!-- Active In-Progress Segment Cards Banner -->
@@ -1643,8 +2232,10 @@
         // Status indicator
         const dot = document.getElementById('live-dot');
         const statusText = document.getElementById('live-status-text');
+        const pill = document.getElementById('header-status-pill');
         if (dot) dot.className = `status-dot ${data.status}`;
         if (statusText) statusText.innerText = data.status;
+        if (pill) pill.title = `Camera Status: ${data.status}`;
 
         const fpsEl = document.getElementById('badge-fps');
         if (fpsEl) fpsEl.innerText = `⚡ ${data.fps} FPS`;
@@ -1702,7 +2293,57 @@
       }
     }
 
-    // Clips Archive
+    // Toast Status Helper for Mobile
+    function showStatusToast() {
+      const status = document.getElementById('live-status-text')?.innerText || 'ONLINE';
+      showToast(`Live Camera Status: ${status}`, status === 'ONLINE' ? '🟢' : '⚠️');
+    }
+
+    // Historical Clips Archive State & Period Filtering
+    let allArchiveClips = [];
+    let availableArchiveDates = [];
+    let archiveDateCounts = {};
+    let activePeriodFilter = 'all';    // 'all', 'today', 'yesterday', '24h', '7d', 'custom'
+    let selectedArchiveDate = 'all';    // 'all' or 'YYYY-MM-DD'
+    let activeTimeSlot = 'all';        // 'all', 'morning', 'afternoon', 'evening', 'night', 'custom'
+    let customTimeStart = '';          // 'HH:MM'
+    let customTimeEnd = '';            // 'HH:MM'
+    let motionOnlyFilter = false;
+    let archiveSearchKeyword = '';
+    let archiveSortOrder = 'desc';     // 'desc' (newest first) or 'asc'
+
+    function getTodayStr() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getYesterdayStr() {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function formatFriendlyDate(dateStr) {
+      try {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+          const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+          const today = getTodayStr();
+          const yesterday = getYesterdayStr();
+          if (dateStr === today) return `📅 Today • ${dateStr}`;
+          if (dateStr === yesterday) return `⏪ Yesterday • ${dateStr}`;
+          return `📅 ${dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}`;
+        }
+      } catch (e) {}
+      return `📅 ${dateStr}`;
+    }
+
     function setArchiveFilter(camId) {
       currentArchiveFilter = camId;
       document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -1716,8 +2357,12 @@
         const url = `/api/clips?camera=${currentArchiveFilter}`;
         const res = await fetch(url);
         const data = await res.json();
-        const container = document.getElementById('clips-container');
         const activeContainer = document.getElementById('active-recording-container');
+
+        // Store fetched raw clips & metadata
+        allArchiveClips = data.clips || [];
+        availableArchiveDates = data.available_dates || [];
+        archiveDateCounts = data.date_counts || {};
 
         // Render Active In-Progress Segment Cards
         if (data.active_clips && Object.keys(data.active_clips).length > 0) {
@@ -1751,52 +2396,452 @@
           activeContainer.innerHTML = '';
         }
 
-        if (!data.clips || data.clips.length === 0) {
-          container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 40px; grid-column: 1 / -1;">No recorded clips found for this filter.</div>`;
-          document.getElementById('archive-total-text').innerText = '(0 clips)';
-          return;
-        }
+        // Render Date Dropdown options with clip counts
+        renderDateDropdownOptions();
 
-        document.getElementById('archive-total-text').innerText = `(${data.clips.length} clips, ${data.storage.used_mb} MB stored total)`;
-
-        container.innerHTML = data.clips.map(clip => `
-          <div class="clip-card">
-            <div class="clip-thumb-wrap" onclick="playClipOnline('${clip.filename}', '${clip.video_url}')">
-              <img class="clip-thumb-img" src="${clip.thumbnail_url}" alt="${clip.filename}" loading="lazy">
-              <div class="thumb-play-overlay">
-                <div class="play-circle">▶</div>
-              </div>
-              <div class="clip-camera-badge">${clip.camera_name}</div>
-              <div class="clip-duration-badge">⏱️ 15m</div>
-              ${clip.has_motion ? `<div class="clip-motion-badge" style="position: absolute; bottom: 8px; left: 8px; background: rgba(239,68,68,0.9); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">🔥 MOTION (${clip.motion_events})</div>` : ''}
-              ${clip.locked ? `<div style="position: absolute; top: 8px; right: 8px; background: rgba(245, 158, 11, 0.9); font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">🔒 LOCKED</div>` : ''}
-            </div>
-
-            <div class="clip-body">
-              <div class="clip-timestamp">${clip.timestamp}</div>
-              <div class="clip-meta-row">
-                <span>Size: <strong>${clip.size_mb} MB</strong></span>
-                <span>Camera: <strong>${clip.camera_name}</strong></span>
-              </div>
-
-              <div class="clip-actions-row">
-                <button class="clip-btn ${clip.locked ? 'lock-active' : ''}" onclick="toggleClipLock('${clip.filename}', ${!clip.locked})">
-                  ${clip.locked ? '🔒 Protected' : '🔓 Protect'}
-                </button>
-                <a class="clip-btn" href="${clip.video_url}" download>
-                  ⬇️ Save
-                </a>
-                <button class="clip-btn" onclick="deleteClip('${clip.filename}')" style="color: var(--accent-red);">
-                  🗑️
-                </button>
-              </div>
-            </div>
-          </div>
-        `).join('');
+        // Apply filters and render matching clips
+        applyArchiveFilters();
 
       } catch (err) {
         console.error("Clips fetch error:", err);
       }
+    }
+
+    function renderDateDropdownOptions() {
+      const select = document.getElementById('archive-date-dropdown');
+      if (!select) return;
+
+      const todayStr = getTodayStr();
+      const yesterdayStr = getYesterdayStr();
+
+      let optionsHtml = `<option value="all">📅 All Recorded Dates (${allArchiveClips.length} clips)</option>`;
+
+      availableArchiveDates.forEach(d => {
+        const count = archiveDateCounts[d] || allArchiveClips.filter(c => c.date_group === d).length;
+        let label = d;
+        if (d === todayStr) label = `Today (${d})`;
+        else if (d === yesterdayStr) label = `Yesterday (${d})`;
+        optionsHtml += `<option value="${d}" ${selectedArchiveDate === d ? 'selected' : ''}>📅 ${label} (${count} clips)</option>`;
+      });
+
+      select.innerHTML = optionsHtml;
+    }
+
+    function applyArchiveFilters() {
+      const container = document.getElementById('clips-container');
+      const totalHeader = document.getElementById('archive-total-text');
+      const filteredCountEl = document.getElementById('summary-filtered-count');
+      const totalHintEl = document.getElementById('summary-total-hint');
+
+      if (!container) return;
+
+      const nowSec = Date.now() / 1000;
+      const todayStr = getTodayStr();
+      const yesterdayStr = getYesterdayStr();
+
+      // Filter in-memory
+      let filtered = allArchiveClips.filter(clip => {
+        // 1. Date / Period filter
+        if (activePeriodFilter === 'today') {
+          if (clip.date_group !== todayStr) return false;
+        } else if (activePeriodFilter === 'yesterday') {
+          if (clip.date_group !== yesterdayStr) return false;
+        } else if (activePeriodFilter === '24h') {
+          if (clip.epoch && clip.epoch < (nowSec - 86400)) return false;
+        } else if (activePeriodFilter === '7d') {
+          if (clip.epoch && clip.epoch < (nowSec - 7 * 86400)) return false;
+        } else if (selectedArchiveDate !== 'all') {
+          if (clip.date_group !== selectedArchiveDate) return false;
+        }
+
+        // 2. Time Slot / Range filter
+        const timePart = clip.time_part || (clip.timestamp ? clip.timestamp.split(' ')[1] : '');
+        if (activeTimeSlot === 'morning') {
+          if (timePart < '06:00:00' || timePart >= '12:00:00') return false;
+        } else if (activeTimeSlot === 'afternoon') {
+          if (timePart < '12:00:00' || timePart >= '18:00:00') return false;
+        } else if (activeTimeSlot === 'evening') {
+          if (timePart < '18:00:00' || timePart > '23:59:59') return false;
+        } else if (activeTimeSlot === 'night') {
+          if (timePart < '00:00:00' || timePart >= '06:00:00') return false;
+        } else if (activeTimeSlot === 'custom') {
+          if (customTimeStart) {
+            const startCmp = customTimeStart.length === 5 ? (customTimeStart + ':00') : customTimeStart;
+            if (timePart < startCmp) return false;
+          }
+          if (customTimeEnd) {
+            const endCmp = customTimeEnd.length === 5 ? (customTimeEnd + ':59') : customTimeEnd;
+            if (timePart > endCmp) return false;
+          }
+        }
+
+        // 3. Motion filter
+        if (motionOnlyFilter && !clip.has_motion) {
+          return false;
+        }
+
+        // 4. Keyword search
+        if (archiveSearchKeyword) {
+          const hay = `${clip.filename} ${clip.camera_name} ${clip.timestamp} ${clip.camera_id}`.toLowerCase();
+          if (!hay.includes(archiveSearchKeyword)) return false;
+        }
+
+        return true;
+      });
+
+      // Sort clips
+      filtered.sort((a, b) => {
+        const timeA = a.epoch || 0;
+        const timeB = b.epoch || 0;
+        return archiveSortOrder === 'desc' ? (timeB - timeA) : (timeA - timeB);
+      });
+
+      // Update counters
+      if (filteredCountEl) filteredCountEl.innerText = filtered.length;
+      if (totalHintEl) totalHintEl.innerText = `(out of ${allArchiveClips.length})`;
+      if (totalHeader) {
+        const totalMb = filtered.reduce((acc, c) => acc + (parseFloat(c.size_mb) || 0), 0);
+        totalHeader.innerText = `(${filtered.length} clips displayed, ${totalMb.toFixed(1)} MB)`;
+      }
+
+      // Render Active Filter Badges
+      renderActiveFilterBadges();
+
+      // Empty State if no clips match
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color); border-radius: var(--radius-lg); margin-top: 10px;">
+            <div style="font-size: 2.2rem; margin-bottom: 10px;">🔍</div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 6px;">No Clips Match Your Time Period</h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); max-width: 420px; margin: 0 auto 16px auto;">
+              No recorded clips match the selected time range or date. Try selecting "All Day" or clicking Reset Filters below.
+            </p>
+            <button class="btn btn-primary" onclick="resetAllFilters()" style="font-size: 0.8rem; padding: 7px 18px;">
+              🔄 Reset Filters & Show All
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // Group clips by Date
+      const dateGroups = {};
+      filtered.forEach(clip => {
+        const d = clip.date_group || 'Other';
+        if (!dateGroups[d]) dateGroups[d] = [];
+        dateGroups[d].push(clip);
+      });
+
+      let html = '';
+      for (const [dateStr, clipsInGroup] of Object.entries(dateGroups)) {
+        const groupMb = clipsInGroup.reduce((acc, c) => acc + (parseFloat(c.size_mb) || 0), 0);
+        html += `
+          <div class="date-group-header">
+            <div class="date-group-title">
+              <span>${formatFriendlyDate(dateStr)}</span>
+            </div>
+            <div class="date-group-count">
+              ${clipsInGroup.length} clips • ${groupMb.toFixed(1)} MB
+            </div>
+          </div>
+        `;
+
+        clipsInGroup.forEach(clip => {
+          const displayTime = clip.time_part || (clip.timestamp ? clip.timestamp.split(' ')[1] : clip.timestamp);
+          html += `
+            <div class="clip-card" id="clip-${clip.filename}">
+              <div class="clip-thumb-wrap" onclick="playClipOnline('${clip.filename}', '${clip.video_url}')">
+                <img class="clip-thumb-img" src="${clip.thumbnail_url}" alt="${clip.filename}" loading="lazy">
+                <div class="thumb-play-overlay">
+                  <div class="play-circle">▶</div>
+                </div>
+                <div class="clip-camera-badge">${clip.camera_name}</div>
+                <div class="clip-duration-badge">⏱️ 15m</div>
+                ${clip.has_motion ? `<div class="clip-motion-badge" style="position: absolute; bottom: 8px; left: 8px; background: rgba(239,68,68,0.9); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">🔥 MOTION (${clip.motion_events})</div>` : ''}
+                ${clip.locked ? `<div style="position: absolute; top: 8px; right: 8px; background: rgba(245, 158, 11, 0.9); font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">🔒 LOCKED</div>` : ''}
+              </div>
+
+              <div class="clip-body">
+                <div class="clip-timestamp">
+                  🕒 ${displayTime}
+                  <span style="font-size: 0.7rem; font-weight: 500; color: var(--text-muted); margin-left: 4px;">(${clip.date_group})</span>
+                </div>
+                <div class="clip-meta-row">
+                  <span>Size: <strong>${clip.size_mb} MB</strong></span>
+                  <span>Camera: <strong>${clip.camera_name}</strong></span>
+                </div>
+
+                <div class="clip-actions-row">
+                  <button class="clip-btn ${clip.locked ? 'lock-active' : ''}" onclick="toggleClipLock('${clip.filename}', ${!clip.locked})">
+                    ${clip.locked ? '🔒 Protected' : '🔓 Protect'}
+                  </button>
+                  <a class="clip-btn" href="${clip.video_url}" download>
+                    ⬇️ Save
+                  </a>
+                  <button class="clip-btn" onclick="deleteClip('${clip.filename}')" style="color: var(--accent-red);">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      container.innerHTML = html;
+    }
+
+    function renderActiveFilterBadges() {
+      const badgeList = document.getElementById('active-filter-badges');
+      if (!badgeList) return;
+
+      const badges = [];
+
+      if (selectedArchiveDate !== 'all') {
+        badges.push({
+          label: `📅 Date: ${selectedArchiveDate}`,
+          onRemove: 'clearDateFilter()'
+        });
+      } else if (activePeriodFilter !== 'all') {
+        const names = { today: 'Today', yesterday: 'Yesterday', '24h': 'Last 24h', '7d': 'Last 7d' };
+        badges.push({
+          label: `📅 Period: ${names[activePeriodFilter] || activePeriodFilter}`,
+          onRemove: 'setPeriodPreset("all")'
+        });
+      }
+
+      if (activeTimeSlot !== 'all') {
+        if (activeTimeSlot === 'custom') {
+          badges.push({
+            label: `⏱️ ${customTimeStart || '00:00'} - ${customTimeEnd || '23:59'}`,
+            onRemove: 'clearTimeRange()'
+          });
+        } else {
+          const slotNames = { morning: 'Morning (06-12)', afternoon: 'Afternoon (12-18)', evening: 'Evening (18-24)', night: 'Night (00-06)' };
+          badges.push({
+            label: `⏱️ ${slotNames[activeTimeSlot] || activeTimeSlot}`,
+            onRemove: 'setTimeSlot("all")'
+          });
+        }
+      }
+
+      if (motionOnlyFilter) {
+        badges.push({
+          label: `🔥 Motion Only`,
+          onRemove: 'toggleMotionFilter()'
+        });
+      }
+
+      if (archiveSearchKeyword) {
+        badges.push({
+          label: `🔍 "${archiveSearchKeyword}"`,
+          onRemove: 'clearSearchText()'
+        });
+      }
+
+      badgeList.innerHTML = badges.map(b => `
+        <span class="filter-badge">
+          ${b.label}
+          <span class="filter-badge-remove" onclick="${b.onRemove}" title="Remove filter">✕</span>
+        </span>
+      `).join('');
+    }
+
+    // Period Preset selection
+    function setPeriodPreset(preset) {
+      activePeriodFilter = preset;
+      selectedArchiveDate = 'all';
+
+      // Update preset chip buttons
+      document.querySelectorAll('#period-preset-chips .preset-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-period') === preset);
+      });
+
+      // Clear custom date input
+      const datePicker = document.getElementById('archive-date-picker');
+      if (datePicker) datePicker.value = '';
+
+      // Reset dropdown
+      const dateSelect = document.getElementById('archive-date-dropdown');
+      if (dateSelect) dateSelect.value = 'all';
+
+      applyArchiveFilters();
+    }
+
+    function onDateDropdownSelect(dateVal) {
+      selectedArchiveDate = dateVal;
+      activePeriodFilter = dateVal === 'all' ? 'all' : 'custom';
+
+      // Update preset chips
+      document.querySelectorAll('#period-preset-chips .preset-chip').forEach(btn => {
+        btn.classList.toggle('active', dateVal === 'all' && btn.getAttribute('data-period') === 'all');
+      });
+
+      // Sync custom date picker
+      const datePicker = document.getElementById('archive-date-picker');
+      if (datePicker) datePicker.value = dateVal === 'all' ? '' : dateVal;
+
+      applyArchiveFilters();
+    }
+
+    function onCustomDatePicker(dateVal) {
+      if (dateVal) {
+        selectedArchiveDate = dateVal;
+        activePeriodFilter = 'custom';
+      } else {
+        selectedArchiveDate = 'all';
+        activePeriodFilter = 'all';
+      }
+
+      // Sync dropdown if exists
+      const dateSelect = document.getElementById('archive-date-dropdown');
+      if (dateSelect) {
+        const match = Array.from(dateSelect.options).find(o => o.value === dateVal);
+        dateSelect.value = match ? dateVal : 'all';
+      }
+
+      // Update preset chips
+      document.querySelectorAll('#period-preset-chips .preset-chip').forEach(btn => {
+        btn.classList.toggle('active', !dateVal && btn.getAttribute('data-period') === 'all');
+      });
+
+      applyArchiveFilters();
+    }
+
+    function clearDateFilter() {
+      setPeriodPreset('all');
+    }
+
+    // Time Slot selection
+    function setTimeSlot(slot) {
+      activeTimeSlot = slot;
+      customTimeStart = '';
+      customTimeEnd = '';
+
+      // Clear custom time inputs
+      const startInp = document.getElementById('archive-time-start');
+      const endInp = document.getElementById('archive-time-end');
+      const clearBtn = document.getElementById('btn-clear-time');
+      if (startInp) startInp.value = '';
+      if (endInp) endInp.value = '';
+      if (clearBtn) clearBtn.style.display = 'none';
+
+      // Update slot chips
+      document.querySelectorAll('#time-slot-chips .slot-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-slot') === slot);
+      });
+
+      applyArchiveFilters();
+    }
+
+    function onCustomTimeRangeChange() {
+      const startInp = document.getElementById('archive-time-start');
+      const endInp = document.getElementById('archive-time-end');
+      const clearBtn = document.getElementById('btn-clear-time');
+
+      customTimeStart = startInp ? startInp.value : '';
+      customTimeEnd = endInp ? endInp.value : '';
+
+      if (customTimeStart || customTimeEnd) {
+        activeTimeSlot = 'custom';
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+        // Deselect slot presets
+        document.querySelectorAll('#time-slot-chips .slot-chip').forEach(btn => btn.classList.remove('active'));
+      } else {
+        activeTimeSlot = 'all';
+        if (clearBtn) clearBtn.style.display = 'none';
+        const allBtn = document.querySelector('#time-slot-chips .slot-chip[data-slot="all"]');
+        if (allBtn) allBtn.classList.add('active');
+      }
+
+      applyArchiveFilters();
+    }
+
+    function clearTimeRange() {
+      setTimeSlot('all');
+    }
+
+    function toggleMotionFilter() {
+      motionOnlyFilter = !motionOnlyFilter;
+      const btn = document.getElementById('btn-filter-motion');
+      if (btn) btn.classList.toggle('active', motionOnlyFilter);
+      applyArchiveFilters();
+    }
+
+    function toggleClipSort() {
+      archiveSortOrder = (archiveSortOrder === 'desc') ? 'asc' : 'desc';
+      const icon = document.getElementById('sort-icon');
+      const text = document.getElementById('sort-text');
+      if (icon) icon.innerText = archiveSortOrder === 'desc' ? '⬇️' : '⬆️';
+      if (text) text.innerText = archiveSortOrder === 'desc' ? 'Newest First' : 'Oldest First';
+      applyArchiveFilters();
+    }
+
+    function onSearchInput(val) {
+      archiveSearchKeyword = (val || '').trim().toLowerCase();
+      const clearBtn = document.getElementById('btn-clear-search');
+      if (clearBtn) clearBtn.style.display = archiveSearchKeyword ? 'block' : 'none';
+      applyArchiveFilters();
+    }
+
+    function clearSearchText() {
+      const box = document.getElementById('archive-search-box');
+      if (box) box.value = '';
+      onSearchInput('');
+    }
+
+    function resetAllFilters() {
+      activePeriodFilter = 'all';
+      selectedArchiveDate = 'all';
+      activeTimeSlot = 'all';
+      customTimeStart = '';
+      customTimeEnd = '';
+      motionOnlyFilter = false;
+      archiveSearchKeyword = '';
+      archiveSortOrder = 'desc';
+
+      // Reset preset chips
+      document.querySelectorAll('#period-preset-chips .preset-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-period') === 'all');
+      });
+
+      // Reset date dropdown & picker
+      const dateSelect = document.getElementById('archive-date-dropdown');
+      if (dateSelect) dateSelect.value = 'all';
+      const datePicker = document.getElementById('archive-date-picker');
+      if (datePicker) datePicker.value = '';
+
+      // Reset time slot chips
+      document.querySelectorAll('#time-slot-chips .slot-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-slot') === 'all');
+      });
+
+      // Reset time inputs
+      const startInp = document.getElementById('archive-time-start');
+      const endInp = document.getElementById('archive-time-end');
+      const clearTimeBtn = document.getElementById('btn-clear-time');
+      if (startInp) startInp.value = '';
+      if (endInp) endInp.value = '';
+      if (clearTimeBtn) clearTimeBtn.style.display = 'none';
+
+      // Reset motion toggle
+      const motionBtn = document.getElementById('btn-filter-motion');
+      if (motionBtn) motionBtn.classList.remove('active');
+
+      // Reset sort toggle
+      const sortIcon = document.getElementById('sort-icon');
+      const sortText = document.getElementById('sort-text');
+      if (sortIcon) sortIcon.innerText = '⬇️';
+      if (sortText) sortText.innerText = 'Newest First';
+
+      // Reset search box
+      const searchBox = document.getElementById('archive-search-box');
+      if (searchBox) searchBox.value = '';
+      const clearSearchBtn = document.getElementById('btn-clear-search');
+      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+
+      applyArchiveFilters();
+      showToast('All archive filters reset', '🔄');
     }
 
     async function splitAndFinalizeClip(camId) {
