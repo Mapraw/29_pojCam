@@ -18,6 +18,32 @@ DEFAULT_SOFT_LIMIT_RATIO = 0.94                     # Clean up when reaching 94%
 DEFAULT_TARGET_PURGE_RATIO = 0.82                   # Purge down to 82% (approx 6.56 GB)
 
 
+def has_moov_atom(path: Path) -> bool:
+    """
+    Checks if an MP4 file contains the essential 'moov' atom index.
+    Without the 'moov' atom, MP4 containers cannot be demuxed by FFmpeg or OpenCV,
+    which otherwise floods stderr with '[mov,mp4,...] moov atom not found'.
+    """
+    try:
+        size = path.stat().st_size
+        if size < 32:
+            return False
+        with open(path, "rb") as f:
+            # Check faststart header (first 1MB)
+            head = f.read(min(size, 1024 * 1024))
+            if b"moov" in head:
+                return True
+            # Check standard MP4 trailer (last 1MB)
+            if size > 1024 * 1024:
+                f.seek(max(0, size - 1024 * 1024))
+                tail = f.read(1024 * 1024)
+                if b"moov" in tail:
+                    return True
+        return False
+    except Exception:
+        return False
+
+
 class StorageManager:
     def __init__(self, recordings_dir: Path = RECORDINGS_DIR, max_storage_bytes: int = DEFAULT_MAX_STORAGE_BYTES):
         self.recordings_dir = Path(recordings_dir)
@@ -218,3 +244,45 @@ class StorageManager:
             self._save_metadata()
 
         return success
+
+    def quarantine_corrupted_clips(self, active_filenames: Optional[List[str]] = None) -> List[str]:
+        """
+        Detects unplayable truncated MP4 clips (missing 'moov' atom from past crashes)
+        and isolates them in 'recordings/corrupted' to prevent player errors and log spam.
+        """
+        active_set = set(active_filenames or [])
+        corrupted_dir = self.recordings_dir / "corrupted"
+        quarantined: List[str] = []
+
+        now = time.time()
+        for video_path in self.recordings_dir.glob("*.mp4"):
+            if video_path.name in active_set:
+                continue
+
+            try:
+                # 20-second grace window to let newly created files finish writing
+                if (now - video_path.stat().st_mtime) < 20:
+                    continue
+
+                if not has_moov_atom(video_path):
+                    corrupted_dir.mkdir(exist_ok=True)
+                    dest = corrupted_dir / video_path.name
+                    video_path.replace(dest)
+                    quarantined.append(video_path.name)
+
+                    thumb = self.thumbnails_dir / f"{video_path.stem}.jpg"
+                    if thumb.exists():
+                        thumb.unlink(missing_ok=True)
+
+                    if video_path.name in self.metadata:
+                        del self.metadata[video_path.name]
+
+                    print(f"[StorageManager] Quarantined incomplete clip: {video_path.name} -> {dest}")
+            except Exception as e:
+                print(f"[StorageManager] Error quarantining {video_path.name}: {e}")
+
+        if quarantined:
+            self._save_metadata()
+
+        return quarantined
+

@@ -348,7 +348,8 @@ def api_clips():
             # Pick any recorder to generate thumbnail
             rec = next(iter(nvr_recorders.values()), None)
             if rec:
-                has_thumb = rec._generate_thumbnail(vf, thumb_path)
+                rec._generate_thumbnail(vf, thumb_path)
+                has_thumb = thumb_path.exists()
 
         clips.append({
             "filename": filename,
@@ -556,6 +557,10 @@ def find_available_port(start_port=5000, max_attempts=10):
 
 
 if __name__ == '__main__':
+    quarantined = storage_mgr.quarantine_corrupted_clips()
+    if quarantined:
+        print(f"[NVR Startup] Quarantined {len(quarantined)} truncated clip(s) to 'recordings/corrupted': {quarantined}")
+
     sync_camera_services()
 
     port = find_available_port(5000)

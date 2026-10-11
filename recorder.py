@@ -8,7 +8,7 @@ import cv2
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
-from storage_manager import StorageManager, RECORDINGS_DIR, THUMBNAILS_DIR
+from storage_manager import StorageManager, RECORDINGS_DIR, THUMBNAILS_DIR, has_moov_atom
 from motion_detector import MotionDetector
 
 SEGMENT_DURATION_SECONDS = 900  # 15 minutes (900 seconds)
@@ -455,12 +455,32 @@ class ContinuousNVRRecorder:
 
             time.sleep(10.0)
 
+    def _create_placeholder_thumbnail(self, thumb_path: Path, label: str = "Corrupted") -> bool:
+        """Draws a clean placeholder thumbnail for incomplete or corrupt recordings."""
+        try:
+            import numpy as np
+            img = np.zeros((225, 400, 3), dtype=np.uint8)
+            img[:] = (30, 30, 35)
+            cv2.rectangle(img, (15, 15), (385, 210), (55, 55, 65), 2)
+            cv2.putText(img, label, (70, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (90, 90, 230), 2, cv2.LINE_AA)
+            cv2.putText(img, "Clip Incomplete / Unplayable", (65, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (140, 140, 150), 1, cv2.LINE_AA)
+            cv2.imwrite(str(thumb_path), img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            return True
+        except Exception:
+            return False
+
     def _generate_thumbnail(self, video_path: Path, thumb_path: Path) -> bool:
         """
-        Robust thumbnail extractor with OpenCV primary engine and FFmpeg CLI fallback.
-        Guarantees thumbnail is generated for all valid clips.
+        Robust thumbnail extractor with pre-validation, OpenCV primary engine, and FFmpeg fallback.
+        Guarantees thumbnail is generated for all valid clips and safely handles corrupt clips.
         """
         if not video_path.exists() or video_path.stat().st_size < 1000:
+            return False
+
+        # Pre-check: Verify MP4 file has 'moov' atom before passing to cv2.VideoCapture.
+        # This completely prevents OpenCV from outputting '[mov,mp4,...] moov atom not found' to stderr.
+        if video_path.suffix.lower() == ".mp4" and not has_moov_atom(video_path):
+            self._create_placeholder_thumbnail(thumb_path, label="Corrupt / Incomplete")
             return False
 
         # Attempt 1: OpenCV direct frame capture
@@ -502,4 +522,7 @@ class ContinuousNVRRecorder:
         except Exception as e:
             print(f"[NVR Recorder] FFmpeg fallback thumbnail error for {video_path.name}: {e}")
 
+        # If both fail on an unreadable file, generate placeholder so scanner does not loop continuously
+        self._create_placeholder_thumbnail(thumb_path, label="Corrupt / Incomplete")
         return False
+
