@@ -563,7 +563,27 @@ if __name__ == '__main__':
 
     sync_camera_services()
 
-    port = find_available_port(5000)
+    # Determine base port from CLI argument, env var, or config.json
+    configured_port = int(app_config.get("port", 5000))
+    if "PORT" in os.environ:
+        try:
+            configured_port = int(os.environ["PORT"])
+        except ValueError:
+            pass
+
+    for i, arg in enumerate(sys.argv):
+        if arg == "--port" and i + 1 < len(sys.argv):
+            try:
+                configured_port = int(sys.argv[i + 1])
+            except ValueError:
+                pass
+        elif arg.startswith("--port="):
+            try:
+                configured_port = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+
+    port = find_available_port(configured_port)
     url = f"http://127.0.0.1:{port}"
     print(f"\n=======================================================")
     print(f"  🍓 Raspberry Pi RTSP Multi-Camera NVR & Web Server Active")
