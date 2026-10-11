@@ -42,11 +42,13 @@ def check_camera_reachable(url: str, timeout: float = 1.5) -> bool:
 
 
 class ContinuousNVRRecorder:
-    def __init__(self, rtsp_url: str, storage_mgr: StorageManager, segment_duration: int = SEGMENT_DURATION_SECONDS, quality_profile: str = "480p_10fps"):
+    def __init__(self, rtsp_url: str, storage_mgr: StorageManager, segment_duration: int = SEGMENT_DURATION_SECONDS, quality_profile: str = "480p_10fps", camera_id: str = "cam1", active_filenames_provider=None):
+        self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.storage_mgr = storage_mgr
         self.segment_duration = segment_duration
         self.quality_profile = quality_profile
+        self.active_filenames_provider = active_filenames_provider
         self.motion_detector = MotionDetector()
 
         self.is_running = False
@@ -118,7 +120,7 @@ class ContinuousNVRRecorder:
             with self.proc_lock:
                 proc = self.ffmpeg_proc
                 if proc is not None and proc.poll() is None:
-                    print("[NVR Recorder] Finalize requested. Sending graceful 'q' signal to complete current clip...")
+                    print(f"[NVR Recorder] Finalize requested for {self.camera_id}. Sending graceful 'q' signal to complete current clip...")
                     try:
                         if proc.stdin and not proc.stdin.closed:
                             proc.stdin.write(b"q\r\n")
@@ -145,10 +147,24 @@ class ContinuousNVRRecorder:
         filepath = RECORDINGS_DIR / self.current_recording_filename
         size_bytes = filepath.stat().st_size if filepath.exists() else 0
         elapsed = int(max(0, time.time() - (self.segment_start_time or time.time())))
+
+        # When recording to MP4 with -movflags +faststart, FFmpeg holds video data in internal buffers
+        # and on-disk size stays at 48 bytes until finalize.
+        # Estimate real-time size from profile bitrate so the user sees live progression instead of 0 MB.
+        bitrate_kbps_map = {
+            "480p_10fps": 260,
+            "360p_10fps": 180,
+            "720p_native": 600,
+            "1080p_full": 1800
+        }
+        target_kbps = bitrate_kbps_map.get(self.quality_profile, 300)
+        estimated_bytes = int(elapsed * (target_kbps * 1024 / 8))
+        effective_bytes = max(size_bytes, estimated_bytes)
         
         return {
+            "camera_id": self.camera_id,
             "filename": self.current_recording_filename,
-            "size_mb": round(size_bytes / (1024 * 1024), 2),
+            "size_mb": round(effective_bytes / (1024 * 1024), 2),
             "elapsed_seconds": elapsed,
             "elapsed_formatted": f"{elapsed//60:02d}:{elapsed%60:02d}",
             "quality_profile": self.quality_profile,
@@ -164,6 +180,11 @@ class ContinuousNVRRecorder:
         input_url = self.rtsp_url
         duration_str = str(int(self.segment_duration))
 
+        # For 480p, 360p, and 720p profiles, automatically prefer stream2 (substream)
+        # if the URL points to stream1. This saves massive CPU on Raspberry Pi (avoiding 1080p decode),
+        # avoids Wi-Fi network saturation, and prevents the Pi from dropping camera streams.
+        economy_feed_url = input_url.replace("/stream1", "/stream2") if "/stream1" in input_url else input_url
+
         if self.quality_profile == "480p_10fps":
             cmd = [
                 "ffmpeg",
@@ -172,7 +193,7 @@ class ContinuousNVRRecorder:
                 "-rtsp_transport", "tcp",
                 "-timeout", "10000000",             # 10-second socket timeout
                 "-fflags", "+genpts+discardcorrupt",
-                "-i", input_url,
+                "-i", economy_feed_url,
                 "-t", duration_str,
                 "-vf", "scale=854:480,fps=10",
                 "-g", "20",                          # Force keyframe every 2 seconds
@@ -197,7 +218,7 @@ class ContinuousNVRRecorder:
                 "-rtsp_transport", "tcp",
                 "-timeout", "10000000",
                 "-fflags", "+genpts+discardcorrupt",
-                "-i", input_url,
+                "-i", economy_feed_url,
                 "-t", duration_str,
                 "-vf", "scale=640:360,fps=10",
                 "-g", "20",
@@ -275,7 +296,7 @@ class ContinuousNVRRecorder:
 
             # 2. Generate new timestamped filename for this specific 15-min segment
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"clip_{timestamp}.mp4"
+            output_filename = f"{self.camera_id}_{timestamp}.mp4"
             self.current_recording_filename = output_filename
             self.segment_start_time = time.time()
             self.split_requested.clear()
@@ -286,13 +307,26 @@ class ContinuousNVRRecorder:
             print(f"[NVR Recorder] Starting new {self.quality_profile} segment: {output_filename} ({self.segment_duration}s target)...")
 
             proc = None
+            stderr_lines = []
+            def _stderr_consumer(pipe):
+                try:
+                    for line in iter(pipe.readline, b''):
+                        decoded = line.decode('utf-8', errors='replace').strip()
+                        if decoded:
+                            stderr_lines.append(decoded)
+                            if len(stderr_lines) > 20:
+                                stderr_lines.pop(0)
+                except Exception:
+                    pass
+
             try:
                 proc = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.PIPE
                 )
+                threading.Thread(target=_stderr_consumer, args=(proc.stderr,), daemon=True).start()
                 with self.proc_lock:
                     self.ffmpeg_proc = proc
 
@@ -300,7 +334,10 @@ class ContinuousNVRRecorder:
                 while not self.stop_event.is_set():
                     poll_code = proc.poll()
                     if poll_code is not None:
-                        print(f"[NVR Recorder] FFmpeg process completed on {output_filename} (exit code {poll_code}).")
+                        err_tail = f" ({' '.join(stderr_lines[-2:])})" if (poll_code != 0 and stderr_lines) else ""
+                        print(f"[NVR Recorder] FFmpeg process completed on {output_filename} (exit code {poll_code}){err_tail}.")
+                        if poll_code != 0 and stderr_lines:
+                            self.status_message = f"Disconnected (exit {poll_code}): {stderr_lines[-1][:45]}"
                         break
 
                     # Check if early split was requested (e.g. user clicked "Finalize Clip Now")
@@ -356,7 +393,8 @@ class ContinuousNVRRecorder:
                     self._generate_thumbnail(completed_file, thumb_file)
                     print(f"[NVR Recorder] Successfully saved clip {output_filename} ({file_size / (1024*1024):.2f} MB).")
                     
-                    # 1.5s camera session cooldown before starting the next consecutive clip
+                    # Immediately clear current recording filename so /api/clips presents it to the gallery right away
+                    self.current_recording_filename = None
                     if not self.stop_event.is_set():
                         self.status = "RECORDING"
                         time.sleep(1.5)
@@ -366,11 +404,13 @@ class ContinuousNVRRecorder:
                         completed_file.unlink(missing_ok=True)
                     except Exception:
                         pass
+                    self.current_recording_filename = None
                     if not self.stop_event.is_set():
                         self.status = "RECONNECTING"
                         time.sleep(2.5)
             else:
                 last_segment_success = False
+                self.current_recording_filename = None
                 if not self.stop_event.is_set():
                     self.status = "RECONNECTING"
                     time.sleep(2.5)
@@ -379,24 +419,34 @@ class ContinuousNVRRecorder:
         """
         Background maintenance thread:
         1. Generates thumbnails for any completed MP4 clips.
-        2. Enforces the storage cap.
+        2. Enforces storage limit while preserving active recordings across ALL cameras.
         """
         while not self.stop_event.is_set():
             try:
-                # 1. Generate thumbnails for completed video clips
-                video_clips = list(RECORDINGS_DIR.glob("*.mp4"))
-                active_name = self.current_recording_filename
+                # 1. Collect all active recording filenames across all cameras
+                active_names = set()
+                if self.active_filenames_provider:
+                    try:
+                        provided = self.active_filenames_provider()
+                        if provided:
+                            active_names.update(provided)
+                    except Exception:
+                        pass
+                if self.current_recording_filename:
+                    active_names.add(self.current_recording_filename)
 
+                # 2. Generate thumbnails for completed video clips (ignoring active files)
+                video_clips = list(RECORDINGS_DIR.glob("*.mp4"))
                 for clip in video_clips:
-                    if active_name and clip.name == active_name:
+                    if clip.name in active_names:
                         continue
 
                     thumb_path = THUMBNAILS_DIR / f"{clip.stem}.jpg"
                     if not thumb_path.exists() and clip.stat().st_size > 2000:
                         self._generate_thumbnail(clip, thumb_path)
 
-                # 2. Enforce storage limit (safely skipping the currently active recording)
-                freed, deleted = self.storage_mgr.cleanup_if_needed(active_filename=self.current_recording_filename)
+                # 3. Enforce storage limit (safely skipping all active in-progress recordings)
+                freed, deleted = self.storage_mgr.cleanup_if_needed(active_filenames=list(active_names))
                 if deleted:
                     print(f"[NVR Recorder] Storage cleanup freed {freed / (1024*1024):.1f} MB ({len(deleted)} clips).")
 

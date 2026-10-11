@@ -18,9 +18,16 @@ RECORDINGS_DIR.mkdir(exist_ok=True)
 
 
 class RTSPStreamManager:
-    def __init__(self, url_file=DEFAULT_URL_FILE):
-        self.url_file = Path(url_file)
-        self.rtsp_url = self.load_url()
+    def __init__(self, url_file=None, rtsp_url=None, camera_id="cam1"):
+        self.camera_id = camera_id
+        self.url_file = Path(url_file) if url_file else None
+        if rtsp_url:
+            self.rtsp_url = rtsp_url
+        elif self.url_file:
+            self.rtsp_url = self.load_url()
+        else:
+            self.url_file = DEFAULT_URL_FILE
+            self.rtsp_url = self.load_url()
         self.transport = "tcp"  # "tcp" or "udp"
         
         # State
@@ -57,7 +64,7 @@ class RTSPStreamManager:
 
     def load_url(self) -> str:
         """Loads the RTSP URL from file or returns default."""
-        if self.url_file.exists():
+        if self.url_file and self.url_file.exists():
             try:
                 content = self.url_file.read_text(encoding="utf-8").strip()
                 if content:
@@ -72,7 +79,8 @@ class RTSPStreamManager:
         if not new_url:
             return False
         try:
-            self.url_file.write_text(new_url, encoding="utf-8")
+            if self.url_file:
+                self.url_file.write_text(new_url, encoding="utf-8")
             self.rtsp_url = new_url
             # Restart capture with new URL
             if self.is_running:
@@ -312,7 +320,8 @@ class RTSPStreamManager:
         status_color = color_map.get(self.status, (200, 200, 200))
 
         # Title
-        cv2.putText(frame, "RTSP CAMERA STREAM", (cx - 190, cy - 50), 
+        title_text = f"CAMERA: {self.camera_id.upper()}"
+        cv2.putText(frame, title_text, (cx - 190, cy - 50), 
                     cv2.FONT_HERSHEY_DUPLEX, 0.9, (230, 235, 245), 2, cv2.LINE_AA)
         
         # Status indicator circle
@@ -339,7 +348,7 @@ class RTSPStreamManager:
         """Captures the current frame and saves to snapshots directory."""
         frame = self.get_latest_frame()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        filename = f"snapshot_{timestamp}.jpg"
+        filename = f"snapshot_{self.camera_id}_{timestamp}.jpg"
         filepath = SNAPSHOTS_DIR / filename
         cv2.imwrite(str(filepath), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
         return filename
@@ -351,7 +360,7 @@ class RTSPStreamManager:
                 return False, "Already recording"
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.recording_filename = f"record_{timestamp}.mp4"
+            self.recording_filename = f"record_{self.camera_id}_{timestamp}.mp4"
             filepath = RECORDINGS_DIR / self.recording_filename
 
             frame = self.get_latest_frame()
@@ -364,7 +373,7 @@ class RTSPStreamManager:
             self.recording_writer = cv2.VideoWriter(str(filepath), fourcc, fps_target, (w, h))
             if not self.recording_writer.isOpened():
                 # Fallback to AVI with XVID if mp4v fails
-                self.recording_filename = f"record_{timestamp}.avi"
+                self.recording_filename = f"record_{self.camera_id}_{timestamp}.avi"
                 filepath = RECORDINGS_DIR / self.recording_filename
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
                 self.recording_writer = cv2.VideoWriter(str(filepath), fourcc, fps_target, (w, h))
@@ -399,6 +408,7 @@ class RTSPStreamManager:
             rec_duration = round(time.time() - self.recording_start_time, 1)
 
         return {
+            "camera_id": self.camera_id,
             "status": self.status,
             "status_message": self.status_message,
             "rtsp_url": self.rtsp_url,

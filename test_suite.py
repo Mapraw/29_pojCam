@@ -99,7 +99,7 @@ def test_full_system():
 
     # 4.1 Test Mobile Home Page
     html = urllib.request.urlopen(f"{base_url}/").read().decode()
-    assert "Pi Camera NVR" in html, "HTML title missing"
+    assert "Pi Camera" in html and "NVR" in html, "HTML title missing"
     assert "mobile-bottom-bar" in html, "Mobile bottom bar missing"
     print("  -> Home page HTML: 200 OK (Mobile-responsive markup found)")
 

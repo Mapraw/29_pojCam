@@ -1,0 +1,23 @@
+{
+  "storage_limit_gb": 8.0,
+  "quality_profile": "480p_10fps",
+  "segment_duration_seconds": 900,
+  "active_camera": "cam1",
+  "cameras": [
+    {
+      "id": "cam1",
+      "name": "Camera 1 (Poj 01)",
+      "rtsp_url": "rtsp://cam_poj01:12345678@192.168.1.238:554/stream2",
+      "image": "/static/mascot_cam1.jpg",
+      "enabled": true
+    },
+    {
+      "id": "cam2",
+      "name": "Camera 2 (Poj 02)",
+      "rtsp_url": "rtsp://campoj02:campoj02@192.168.1.247/stream2",
+      "image": "/static/mascot_cam2.jpg",
+      "enabled": true
+    }
+  ],
+  "rtsp_url": "rtsp://cam_poj01:12345678@192.168.1.238:554/stream2"
+}

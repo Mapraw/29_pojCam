@@ -125,7 +125,7 @@ class StorageManager:
         """Gets metadata for a specific clip."""
         return self.metadata.get(filename, {})
 
-    def cleanup_if_needed(self, active_filename: Optional[str] = None) -> Tuple[int, List[str]]:
+    def cleanup_if_needed(self, active_filename: Optional[str] = None, active_filenames: Optional[List[str]] = None) -> Tuple[int, List[str]]:
         """
         FIFO Circular Buffer:
         Checks if total disk usage exceeds soft limit (e.g. 7.52 GB of 8.0 GB).
@@ -139,6 +139,12 @@ class StorageManager:
 
         print(f"[StorageManager] Storage limit triggered ({used_bytes / (1024*1024):.1f} MB used). Initiating FIFO purge...")
         
+        active_set = set()
+        if active_filenames:
+            active_set.update(active_filenames)
+        if active_filename:
+            active_set.add(active_filename)
+
         # Get all video files sorted by modification/creation time (oldest first)
         video_files = list(self.recordings_dir.glob("*.mp4")) + list(self.recordings_dir.glob("*.mkv"))
         video_files.sort(key=lambda p: p.stat().st_mtime)
@@ -149,8 +155,8 @@ class StorageManager:
         for video_path in video_files:
             filename = video_path.name
 
-            # Skip active in-progress recording file
-            if active_filename and filename == active_filename:
+            # Skip active in-progress recording files
+            if filename in active_set:
                 continue
 
             # Skip locked clips

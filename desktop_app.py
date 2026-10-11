@@ -8,16 +8,20 @@ from PIL import Image, ImageTk
 import cv2
 
 from stream_manager import RTSPStreamManager, SNAPSHOTS_DIR, RECORDINGS_DIR
+from config_manager import get_cameras, load_config
 
 class DesktopStreamerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("RTSP Camera Streamer - High Quality")
+        self.root.title("RTSP Multi-Camera Streamer")
         self.root.geometry("1100x750")
         self.root.minsize(800, 500)
         self.root.configure(bg="#12151c")
 
-        self.manager = RTSPStreamManager()
+        self.cameras = get_cameras()
+        first_url = self.cameras[0]["rtsp_url"] if self.cameras else None
+        first_id = self.cameras[0]["id"] if self.cameras else "cam1"
+        self.manager = RTSPStreamManager(rtsp_url=first_url, camera_id=first_id)
         self.manager.start()
 
         self.is_fullscreen = False
@@ -82,6 +86,17 @@ class DesktopStreamerApp:
 
         self.btn_reconnect = ttk.Button(btn_box, text="🔄 Reconnect", command=self._reconnect)
         self.btn_reconnect.pack(side="right", padx=4)
+
+        if self.cameras:
+            self.cam_combo = ttk.Combobox(
+                btn_box,
+                values=[f"{c['name']} ({c['id'].upper()})" for c in self.cameras],
+                state="readonly",
+                width=24
+            )
+            self.cam_combo.current(0)
+            self.cam_combo.bind("<<ComboboxSelected>>", self._on_camera_switch)
+            self.cam_combo.pack(side="right", padx=6)
 
         # Video Canvas Area
         self.video_container = tk.Frame(self.root, bg="#0b0e14")
@@ -210,6 +225,16 @@ class DesktopStreamerApp:
 
     def _reconnect(self):
         self.manager.restart()
+
+    def _on_camera_switch(self, event=None):
+        if not hasattr(self, 'cam_combo'):
+            return
+        idx = self.cam_combo.current()
+        if 0 <= idx < len(self.cameras):
+            cam = self.cameras[idx]
+            self.manager.camera_id = cam["id"]
+            self.manager.save_url(cam["rtsp_url"])
+            self.lbl_url.config(text=f"Source: {cam['name']} ({cam['rtsp_url']})")
 
     def _open_folder(self):
         import subprocess

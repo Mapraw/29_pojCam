@@ -1,27 +1,33 @@
-# 🍓 Raspberry Pi RTSP Camera NVR & Mobile Web Server
+# 🍓 Raspberry Pi RTSP Multi-Camera NVR & Mobile Web Server
 
-A lightweight, dedicated 24/7 **Micro-NVR** and **Mobile-First Web Server** for RTSP cameras, engineered specifically for Raspberry Pi (low CPU load, 4GB rolling storage FIFO retention, and smartphone playback).
+A lightweight, scalable 24/7 **Micro-NVR** and **Mobile-First Web Server** for RTSP cameras, engineered specifically for Raspberry Pi (low CPU load, rolling storage FIFO retention, cute mascot selection portal, and smartphone playback).
 
 ---
 
 ## 🌟 Key Features
 
-1. **⚡ Ultra-Low CPU Direct Stream Remuxing (`-c:v copy -c:a aac`)**:
+1. **🐾 Multi-Camera Selection Hub with Cute 3D Mascot Cards**:
+   - Welcome landing screen featuring cute 3D cartoon mascot cards for each camera.
+   - 1-click entrance to any camera's live stream and recording archive.
+   - Quick camera switcher in the top bar to toggle feeds seamlessly.
+   - Built-in **Camera Manager** to add, edit, or delete cameras dynamically from the UI.
+
+2. **⚡ Ultra-Low CPU Direct Stream Remuxing (`-c:v copy -c:a aac`)**:
    - Uses FFmpeg to copy video streams directly into MP4 containers without CPU re-encoding (**< 1% CPU usage on Raspberry Pi**).
    - Records crisp camera-quality segments with full **Audio Support (AAC)**.
-   - Saves continuous **15-minute clips** (`900s` segments).
+   - Independent 24/7 background recording for all configured cameras into continuous **15-minute clips** (`900s` segments).
 
-2. **🧹 4.0 GB Storage Pool & FIFO Rolling Retention**:
-   - Maintains a maximum **4.0 GB hard limit** in the `recordings/` folder.
-   - Automatically purges the oldest clips when storage reaches capacity (**FIFO auto-cleanup**).
+3. **🧹 Shared Storage Pool & FIFO Rolling Retention**:
+   - Configurable storage hard limit (e.g. 8.0 GB) in the `recordings/` folder across all cameras.
+   - Automatically purges oldest unlocked clips when storage reaches capacity (**FIFO auto-cleanup**).
    - **🔒 Clip Lock Protection**: Star / Lock important clips from the UI so they are never auto-deleted.
 
-3. **📱 Smartphone-Compatible Web App (PWA Experience)**:
-   - **Bottom Tab Navigation** optimized for iOS Safari & Android Chrome.
+4. **📱 Smartphone-Compatible Web App (PWA Experience)**:
+   - **🏠 Cameras Hub**: Choose which camera to inspect with cute cartoon cards.
    - **🔴 Live Stream Tab**: Low-latency video preview, digital zoom & pan, live FPS & status.
-   - **🎬 15-Min Clips Archive Tab**: Thumbnail gallery, timestamps, file sizes, and 🔥 **Motion Detection** badges.
+   - **🎬 15-Min Clips Archive Tab**: Filter clips by camera or view all, thumbnail gallery, timestamps, file sizes, and 🔥 **Motion Detection** badges.
    - **▶️ In-Browser HTML5 Video Player**: Uses **HTTP 206 Partial Content (Range Requests)** for instant seek/scrubbing on mobile, speed toggle (`0.5x`, `1.0x`, `1.5x`, `2.0x`), and 1-tap download to phone.
-   - **📊 4GB Storage & Pi Health Tab**: Visual storage gauge, Pi CPU temperature (°C), and RAM monitor.
+   - **📊 Storage & Pi Health Tab**: Visual storage gauge, Pi CPU temperature (°C), RAM monitor, and Camera Manager.
 
 4. **🚀 24/7 Auto-Start on Raspberry Pi Boot**:
    - Runs automatically on Pi power-on without typing any commands! (Available via **Docker** or native **Systemd**).

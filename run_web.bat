@@ -30,6 +30,9 @@ echo Starting Web Streamer App with %PY_CMD%...
 echo Target RTSP URL will be read from high_qual.txt
 echo.
 
+set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
+
 %PY_CMD% app.py
 
 if %ERRORLEVEL% NEQ 0 (
